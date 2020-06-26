@@ -77,7 +77,12 @@ impl hand_indexer_t {
      * get suit using card & 3
      */
     pub fn get_hand(&self, round: u32, index: hand_index_t) -> Vec<u8> {
-        let mut cards: Vec<u8> = vec![0; TOTAL_CARDS_PER_ROUND[round as usize]];
+        // TODO TEMP
+        let mut total_cards = 0;
+        for i in 0..self.rounds {
+            total_cards += self.cards_per_round[i as usize];
+        }
+        let mut cards: Vec<u8> = vec![0; total_cards.into()];
         unsafe {
             hand_unindex(&*self, round, index, cards.as_mut_ptr());
         }
