@@ -4,7 +4,7 @@ extern crate bytepack;
 extern crate memmap;
 extern crate crossbeam;
 
-use std::io::Write; // <--- bring flush() into scope
+use std::io::Write; // <--- ring flush() into scope
 use std::io;
 use bytepack::{ LEPacker };
 use std::time::{ Instant };
@@ -48,6 +48,7 @@ fn main() {
                     let mut board_mask: u64;
                     let mut combo: Combo;
                     let mut hand_ranges: Vec<CardRange>;
+                    let mut cards: Vec<u8> = vec![0; cards_per_round[i]];
                     for k in 0..slice.len() {
 
                         // update percent every 1000 hands on thread 0
@@ -56,16 +57,16 @@ fn main() {
                             io::stdout().flush().unwrap();
                         }
 
-                        let hand = indexers[i].get_hand(round, ((j as u64) * size_per_thread) + (k as u64));
-                        combo = Combo(hand[0], hand[1]);
+                        indexers[i].get_hand(round, ((j as u64) * size_per_thread) + (k as u64), cards.as_mut_slice());
+                        combo = Combo(cards[0], cards[1]);
 
                         // create board
                         board_mask = 0;
                         let mut board_str = String::new();
                         for n in 2..cards_per_round[i as usize] {
-                            board_mask |= 1u64 << hand[n];
-                            board_str.push(RANKS[(hand[n] >> 2) as usize]);
-                            board_str.push(SUITS[(hand[n] & 3) as usize]);
+                            board_mask |= 1u64 << cards[n];
+                            board_str.push(RANKS[(cards[n] >> 2) as usize]);
+                            board_str.push(SUITS[(cards[n] & 3) as usize]);
                         }
 
                         hand_ranges = CardRange::from_str_arr([combo.to_string(), "random".to_string()].to_vec());

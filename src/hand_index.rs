@@ -12,7 +12,7 @@ unsafe impl Send for hand_indexer_t {}
 // include hand indexer bindings
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-static TOTAL_CARDS_PER_ROUND: [usize; 4] = [2, 5, 6, 7];
+static TOTAL_CARDS: &'static [usize; 4] = &[2, 5, 6, 7];
 
 impl hand_indexer_t {
     /**
@@ -49,26 +49,24 @@ impl hand_indexer_t {
         return hand_indexer;
     }
 
+    /**
+     * Return number of indices in a round
+     */
     pub fn size(&self, round: u32) -> u64 {
         return unsafe { hand_indexer_size(self, round) };
     }
 
-    pub fn get_index(&self, cards: Vec<u8>, round: usize) -> hand_index_t {
-        let mut indices: Vec<hand_index_t> = vec![0; self.rounds as usize];
-        unsafe {
-            hand_index_all(self, cards.as_ptr(), indices.as_mut_ptr());
-        };
-        return indices[round];
-    }
-
-    pub fn get_index_last(&self, cards: Vec<u8>) -> hand_index_t {
+    /**
+     * Gets the index for a set of cards
+     */
+    pub fn get_index(&self, cards: &[u8]) -> hand_index_t {
         unsafe {
             return hand_index_last(self, cards.as_ptr());
         }
     }
 
     /**
-     * get hand
+     * get a cannonical hand from an index
      * @param index: 64bit hand index
      * @param round: 0: preflop, 1: flop, ect.
      *
@@ -76,16 +74,9 @@ impl hand_indexer_t {
      * get rank using card >> 2
      * get suit using card & 3
      */
-    pub fn get_hand(&self, round: u32, index: hand_index_t) -> Vec<u8> {
-        // TODO TEMP
-        let mut total_cards = 0;
-        for i in 0..self.rounds {
-            total_cards += self.cards_per_round[i as usize];
-        }
-        let mut cards: Vec<u8> = vec![0; total_cards.into()];
+    pub fn get_hand(&self, round: u32, index: hand_index_t, cards: &mut [u8]) {
         unsafe {
-            hand_unindex(&*self, round, index, cards.as_mut_ptr());
+            hand_unindex(self, round, index, cards.as_mut_ptr());
         }
-        return cards.to_vec();
     }
 }
