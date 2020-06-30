@@ -1,7 +1,5 @@
 **ehs.dat
-
 Cargo.lock
-
-
+*.o
 /target
 
