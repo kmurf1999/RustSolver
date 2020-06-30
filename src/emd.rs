@@ -4,7 +4,7 @@
 * https://www.hindawi.com/journals/mpe/2014/406358/
 */
 
-use std::cmp;
+// use std::cmp;
 
 macro_rules! min {
     ($x: expr) => ($x);
@@ -30,15 +30,15 @@ macro_rules! min {
 //     }}
 // }
 
-// fn l2_norm(x: &Vec<i64>) -> f32 {
-//     let mut sum: f32 = 0.0;
+// fn l2_norm(x: &Vec<i64>) -> f64 {
+//     let mut sum: f64 = 0.0;
 //     for i in 0..x.len() {
-//         sum += (x[i] * x[i]) as f32;
+//         sum += (x[i] * x[i]) as f64;
 //     }
 //     return sum.sqrt();
 // }
 
-// fn get_bins(b: Vec<i64>, B: &mut Vec<Vec<i64>>, u: f32, d: usize, curr: usize) {
+// fn get_bins(b: Vec<i64>, B: &mut Vec<Vec<i64>>, u: f64, d: usize, curr: usize) {
 //     for i in curr..d {
 //         let mut bp = b.clone();
 //         if bp[i] == 0 {
@@ -97,7 +97,7 @@ fn get_bins_1d(b: isize, bins: &mut Vec<isize>, u: isize) {
     }
 }
 
-pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
+pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
     let mut p = p.clone();
     let mut q = q.clone();
 
@@ -113,11 +113,12 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
         q[i] -= mass;
     }
 
-    let u: isize = if w < 0.5 {
-        q.len() as isize
-    } else {
-        (q.len() / 2) as isize
-    };
+    let u: isize = q.len() as isize;
+    // let u: isize = if w < 0.5 {
+    //     q.len() as isize
+    // } else {
+    //     (q.len() / 2) as isize
+    // };
 
     let mut b: Vec<isize> = Vec::new();
     get_bins_1d(0, &mut b, u);
@@ -131,7 +132,7 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
                 if k < q.len() && q[k] != 0.0 {
                     let mass = min!(p[j], q[k]);
                     w += mass;
-                    cost += mass * (j as f32 - k as f32).abs();
+                    cost += mass * (j as f64 - k as f64).abs();
                     p[j] -= mass;
                     q[k] -= mass;
                 }
@@ -139,7 +140,7 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
         }
     }
 
-    return cost + (1.0 - w) * u as f32;
+    return cost + (1.0 - w) * u as f64;
 }
 
 #[cfg(test)]
@@ -147,7 +148,7 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    const ERROR: f32 = 0.05;
+    const ERROR: f64 = 0.05;
 
     #[test]
     fn test_emd_ak_aq() {

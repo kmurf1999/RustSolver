@@ -1,8 +1,11 @@
-use bytepack::{ LEUnpacker };
+// use bytepack::{ LEUnpacker };
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::io::BufReader;
+use combine::Parser;
+use combine::parser::byte::num::le_f64;
+use std::io::{Error, ErrorKind};
 
 use rust_solver::hand_index::{ hand_indexer_t };
 
@@ -45,25 +48,30 @@ impl EHS {
      * Get offset index of cards for lookup table
      * first two cards are hole cards
      */
-    pub fn get_ehs(&self, cards: &[u8]) -> f32 {
-        let mut reader = BufReader::with_capacity(4, &self.file);
+    pub fn get_ehs(&self, cards: &[u8]) -> std::io::Result<f64> {
+        let mut reader = BufReader::with_capacity(8, &self.file);
+        //  let mut file = File::open("ehs.dat").unwrap();
         let i: usize = match cards.len() {
             2 => 0,
             5 => 1,
             6 => 2,
             7 => 3,
-            _ => 0
+            _ => {
+                println!("ERRROR");
+                1000
+            }
         };
+
         let index = self.indexers[i].get_index(cards);
-        match reader.seek(SeekFrom::Start((index + self.offsets[i]) * 4)) {
-            Ok(_) => {
-                let equity: f32 = reader.unpack().unwrap();
-                return equity;
+        reader.seek(SeekFrom::Start((index + self.offsets[i]) * 8))?;
+        let buffer = reader.fill_buf()?;
+        let result = le_f64().parse(buffer);
+        match result {
+            Ok((val, _)) => {
+                return Ok(val);
             },
-            Err(error) => {
-                // TODO BETTER handling
-                println!("{}", error);
-                return 0.0;
+            Err(_) => {
+                return Err(Error::new(ErrorKind::Other, "Unexpected Parse"));
             }
         }
     }
@@ -97,56 +105,43 @@ mod tests {
     }
 
     #[test]
-    fn test_get_ehs_aa_pre() {
+    fn test_get_ehs_aa() {
         let ehs_table = EHS::new();
-        let cards = vec![48u8, 49];
-        let ehs = ehs_table.get_ehs(cards.as_slice());
-        assert_eq!(ehs, 0.84594727);
-    }
-
-    #[test]
-    fn test_get_ehs_aa_flop() {
-        let ehs_table = EHS::new();
-        let cards = vec![48u8, 49, 0, 10, 20];
-        let ehs = ehs_table.get_ehs(cards.as_slice());
-        assert_eq!(ehs, 0.8574219);
-    }
-
-    #[test]
-    fn test_get_ehs_aa_turn() {
-        let ehs_table = EHS::new();
-        let cards = vec![48u8, 49, 0, 10, 20, 25];
-        let ehs = ehs_table.get_ehs(cards.as_slice());
-        assert_eq!(ehs, 0.843533);
-    }
-
-    #[test]
-    fn test_get_ehs_aa_river() {
-        let ehs_table = EHS::new();
-        let cards = vec![48u8, 49, 0, 10, 20, 25, 29];
-        let ehs = ehs_table.get_ehs(cards.as_slice());
-        assert_eq!(ehs, 0.84418404);
+        let mut cards: Vec<u8>;
+        let mut ehs: f64;
+        cards = vec![48u8, 49];
+        ehs = ehs_table.get_ehs(cards.as_slice()).unwrap();
+        assert_eq!(ehs, 0.8520068359375);
+        cards = vec![48u8, 49, 0, 10, 20];
+        ehs = ehs_table.get_ehs(cards.as_slice()).unwrap();
+        assert_eq!(ehs, 0.865142822265625);
+        cards = vec![48u8, 49, 0, 10, 20, 25];
+        ehs = ehs_table.get_ehs(cards.as_slice()).unwrap();
+        assert_eq!(ehs, 0.838623046875);
+        cards = vec![48u8, 49, 0, 10, 20, 25, 29];
+        ehs = ehs_table.get_ehs(cards.as_slice()).unwrap();
+        assert_eq!(ehs, 0.842742919921875);
     }
 
     #[bench]
     fn bench_get_ehs_flop(b: &mut Bencher) {
         let ehs_table = EHS::new();
         let cards = random_cards(5);
-        b.iter(|| ehs_table.get_ehs(cards.as_slice()));
+        b.iter(|| ehs_table.get_ehs(cards.as_slice()).unwrap());
     }
 
     #[bench]
     fn bench_get_ehs_turn(b: &mut Bencher) {
         let ehs_table = EHS::new();
         let cards = random_cards(6);
-        b.iter(|| ehs_table.get_ehs(cards.as_slice()));
+        b.iter(|| ehs_table.get_ehs(cards.as_slice()).unwrap());
     }
 
     #[bench]
     fn bench_get_ehs_river(b: &mut Bencher) {
         let ehs_table = EHS::new();
         let cards = random_cards(7);
-        b.iter(|| ehs_table.get_ehs(cards.as_slice()));
+        b.iter(|| ehs_table.get_ehs(cards.as_slice()).unwrap())
     }
 
 }
