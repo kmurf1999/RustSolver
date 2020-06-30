@@ -40,7 +40,7 @@ fn main() {
         // num hands per thread
         let size_per_thread = batch_size / N_THREADS;
         // equity table
-        let mut equity_table = vec![0f32; batch_size as usize];
+        let mut equity_table = vec![0f64; batch_size as usize];
         // current round 0->preflop, 3->river
         crossbeam::scope(|scope| {
             for (j, slice) in equity_table.chunks_mut(size_per_thread as usize).enumerate() {
@@ -53,7 +53,7 @@ fn main() {
 
                         // update percent every 1000 hands on thread 0
                         if (j == 0) && (k & 0xfff == 0) {
-                            print!("{:.3}% \r", (100 * k) as f32 / size_per_thread as f32);
+                            print!("{:.3}% \r", (100 * k) as f64 / size_per_thread as f64);
                             io::stdout().flush().unwrap();
                         }
 
@@ -73,9 +73,10 @@ fn main() {
 
                         // run sim
                         if i == 0 {
-                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 1, 10000)[0];
-                        } else { // small sample count and more cores
-                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 2, 2000)[0];
+                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 1, 100000)[0];
+                        } else {
+                            // small sample count and more cores
+                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 2, 10000)[0];
                         }
                     }
                 });

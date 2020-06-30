@@ -75,6 +75,11 @@ pub fn kmeans_center_multiple_restarts<R: Rng>(
 /**
  * Updates the clusters for a dataset based on a given distance function
  * returns the number of elements that have changed
+ *
+ * k: number of clusters
+ * dataset: mutabe reference to list of data to cluster
+ * dist_func: distance function to compare histograms
+ * center: k-centers
  */
 pub fn cluster_data(k: usize, dataset: &mut Vec<DataPoint>,
         dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),

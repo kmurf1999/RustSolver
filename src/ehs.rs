@@ -46,7 +46,7 @@ impl EHS {
      * first two cards are hole cards
      */
     pub fn get_ehs(&self, cards: &[u8]) -> f32 {
-        let mut reader = BufReader::new(&self.file);
+        let mut reader = BufReader::with_capacity(4, &self.file);
         let i: usize = match cards.len() {
             2 => 0,
             5 => 1,
@@ -97,11 +97,35 @@ mod tests {
     }
 
     #[test]
-    fn test_get_ehs_aa() {
+    fn test_get_ehs_aa_pre() {
         let ehs_table = EHS::new();
         let cards = vec![48u8, 49];
         let ehs = ehs_table.get_ehs(cards.as_slice());
         assert_eq!(ehs, 0.84594727);
+    }
+
+    #[test]
+    fn test_get_ehs_aa_flop() {
+        let ehs_table = EHS::new();
+        let cards = vec![48u8, 49, 0, 10, 20];
+        let ehs = ehs_table.get_ehs(cards.as_slice());
+        assert_eq!(ehs, 0.8574219);
+    }
+
+    #[test]
+    fn test_get_ehs_aa_turn() {
+        let ehs_table = EHS::new();
+        let cards = vec![48u8, 49, 0, 10, 20, 25];
+        let ehs = ehs_table.get_ehs(cards.as_slice());
+        assert_eq!(ehs, 0.843533);
+    }
+
+    #[test]
+    fn test_get_ehs_aa_river() {
+        let ehs_table = EHS::new();
+        let cards = vec![48u8, 49, 0, 10, 20, 25, 29];
+        let ehs = ehs_table.get_ehs(cards.as_slice());
+        assert_eq!(ehs, 0.84418404);
     }
 
     #[bench]

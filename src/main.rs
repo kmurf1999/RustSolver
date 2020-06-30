@@ -18,7 +18,9 @@ use rand::distributions::{Uniform};
 use rand::{SeedableRng, thread_rng, Rng};
 use rand::rngs::SmallRng;
 
-use rust_poker::card_range;
+use rust_poker::card_range::{CardRange, Combo};
+
+use rust_poker::equity_calc::EquityCalc;
 
 use ehs::EHS;
 
@@ -70,7 +72,7 @@ fn generate_round(round: usize) {
     // to grab expected hand strengths
     let ehs_table = Arc::new(EHS::new());
     // number of bins in histogram
-    let bins = 30;
+    let bins = 20;
     let cards_per_round = [2, 5, 6, 7];
 
     // NON CONSTS
@@ -95,11 +97,7 @@ fn generate_round(round: usize) {
             let mut cards: Vec<u8> = vec![0; 7];
             scope.spawn(move |_| {
                 for j in 0..slice.len() {
-                    // print progress
-                    // if (i == 0) && (j % 1000 == 0) {
-                    //     print!("{:.3}% \r", (100 * j) as f32 / size_per_thread as f32);
-                    //     io::stdout().flush().unwrap();
-                    // }
+
                     let index = ((i * size_per_thread) + j) as u64;
                     // get hand
                     ehs_table.indexers[round].get_hand(round as u32, index, cards.as_mut_slice());
@@ -110,20 +108,34 @@ fn generate_round(round: usize) {
                     }
                     // create histogram for index (i * size) + j
                     for _ in 0..samples_per_round[round] {
-                        let mut card_mask = card_mask.clone();
                         // fill remaining board cards
+                        let mut c_mask = card_mask;
+                        let mut board_mask = 0;
                         for k in cards_per_round[round]..7 {
                             loop {
                                 // cards[k] = card_dist.sample(&mut rng);
                                 cards[k] = rng.sample(card_dist);
-                                if (card_mask & 1u64 << cards[k]) == 0 {
-                                    card_mask |= 1u64 << cards[k];
+                                if (c_mask & 1u64 << cards[k]) == 0 {
+                                    c_mask |= 1u64 << cards[k];
+                                    board_mask |= 1u64 << cards[k];
                                     break;
                                 }
                             }
                         }
                         // get ehs and add to histogram
-                        let ehs = ehs_table.get_ehs(cards.as_slice());
+                        let table_ehs = ehs_table.get_ehs(cards.as_slice());
+
+                        let combo = Combo(cards[0], cards[1]);
+                        let mut hand_ranges = CardRange::from_str_arr([
+                                combo.to_string(),
+                                "random".to_string()
+                        ].to_vec());
+
+                        let ehs = EquityCalc::start(&mut hand_ranges,
+                                board_mask, 1, 1000)[0];
+
+                        println!("table {}, ecal {}", table_ehs, ehs);
+
                         slice[j].histogram[get_bin(ehs, bins)] += 1f32;
                     }
                     // normalize histogram
@@ -135,25 +147,38 @@ fn generate_round(round: usize) {
         }
     }).unwrap();
 
-    let restarts: usize = 100;
-    let n_buckets: usize = 16;
-    let n_features: usize = features[0].histogram.len();
-    let mut center: Vec<Histogram> = Vec::with_capacity(n_buckets);
-    let mut rng = SmallRng::from_rng(&mut thread_rng).unwrap();
+    for x in &features[0].histogram {
+        print!("{}, ", x);
+    }
+    println!("");
+    let mut cards: Vec<u8> = vec![0; 2];
+    ehs_table.indexers[0].get_hand(0, 0, cards.as_mut_slice());
+    let cards = Combo(cards[0], cards[1]).to_string();
+    println!("{}", cards);
 
-    kmeans::kmeans_center_multiple_restarts(
-            restarts, n_buckets,
-            &mut center, &features,
-            &mut rng);
 
-    kmeans::kmeans(n_buckets, &mut features,
-            &emd::emd_1d, &mut center);
+    // let restarts: usize = 100;
+    // // k in k means
+    // let n_buckets: usize = 16;
+    // // let n_features: usize = features[0].histogram.len();
+    // let mut center: Vec<Histogram> = Vec::with_capacity(n_buckets);
+    // let mut rng = SmallRng::from_rng(&mut thread_rng).unwrap();
+
+    // kmeans::kmeans_center_multiple_restarts(
+    //         restarts, n_buckets,
+    //         &mut center, &features,
+    //         &mut rng);
+
+    // kmeans::kmeans(n_buckets, &mut features,
+    //         &emd::emd_1d, &mut center);
 
     // let mut cards: Vec<u8> = vec![0; 2];
     // for i in 0usize..169 {
-    //     ehs_table.indexers[0].get_hand(0, i as u64, cards.as_mut_slice());
-    //     let cards = card_range::Combo(cards[0], cards[1]).to_string();
-    //     println!("{} bin {}", cards, features[i].cluster);
+    //     if features[i].cluster == 0 {
+    //         ehs_table.indexers[0].get_hand(0, i as u64, cards.as_mut_slice());
+    //         let cards = card_range::Combo(cards[0], cards[1]).to_string();
+    //         println!("{} bin {}", cards, features[i].cluster);
+    //     }
     // }
 }
 
