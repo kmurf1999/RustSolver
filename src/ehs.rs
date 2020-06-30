@@ -1,9 +1,8 @@
-extern crate test;
-
 use bytepack::{ LEUnpacker };
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::SeekFrom;
+use std::io::BufReader;
 
 use rust_solver::hand_index::{ hand_indexer_t };
 
@@ -14,6 +13,7 @@ pub struct EHS {
     pub indexers: [hand_indexer_t; 4],
     // offsets for lookup table
     offsets: [u64; 4],
+    file: File
     // file pointer to lookup table
     // file_location: str
 }
@@ -36,7 +36,8 @@ impl EHS {
         }
         EHS {
             indexers: indexers,
-            offsets: offsets
+            offsets: offsets,
+            file: File::open("ehs.dat").unwrap()
         }
     }
 
@@ -45,7 +46,7 @@ impl EHS {
      * first two cards are hole cards
      */
     pub fn get_ehs(&self, cards: &[u8]) -> f32 {
-        let mut file = File::open("ehs.dat").unwrap();
+        let mut reader = BufReader::new(&self.file);
         let i: usize = match cards.len() {
             2 => 0,
             5 => 1,
@@ -54,9 +55,9 @@ impl EHS {
             _ => 0
         };
         let index = self.indexers[i].get_index(cards);
-        match file.seek(SeekFrom::Start((index + self.offsets[i]) * 4)) {
+        match reader.seek(SeekFrom::Start((index + self.offsets[i]) * 4)) {
             Ok(_) => {
-                let equity: f32 = file.unpack().unwrap();
+                let equity: f32 = reader.unpack().unwrap();
                 return equity;
             },
             Err(error) => {
@@ -93,6 +94,14 @@ mod tests {
             }
         }
         return cards;
+    }
+
+    #[test]
+    fn test_get_ehs_aa() {
+        let ehs_table = EHS::new();
+        let cards = vec![48u8, 49];
+        let ehs = ehs_table.get_ehs(cards.as_slice());
+        assert_eq!(ehs, 0.84594727);
     }
 
     #[bench]

@@ -18,27 +18,27 @@ macro_rules! min {
     }}
 }
 
-macro_rules! max {
-    ($x: expr) => ($x);
-    ($x: expr, $($z: expr),+) => {{
-        let y = max!($($z),*);
-        if $x > y {
-            $x
-        } else {
-            y
-        }
-    }}
-}
+// macro_rules! max {
+//     ($x: expr) => ($x);
+//     ($x: expr, $($z: expr),+) => {{
+//         let y = max!($($z),*);
+//         if $x > y {
+//             $x
+//         } else {
+//             y
+//         }
+//     }}
+// }
 
-// fn l2_norm(x: &Vec<i64>) -> f64 {
-//     let mut sum: f64 = 0.0;
+// fn l2_norm(x: &Vec<i64>) -> f32 {
+//     let mut sum: f32 = 0.0;
 //     for i in 0..x.len() {
-//         sum += (x[i] * x[i]) as f64;
+//         sum += (x[i] * x[i]) as f32;
 //     }
 //     return sum.sqrt();
 // }
 
-// fn get_bins(b: Vec<i64>, B: &mut Vec<Vec<i64>>, u: f64, d: usize, curr: usize) {
+// fn get_bins(b: Vec<i64>, B: &mut Vec<Vec<i64>>, u: f32, d: usize, curr: usize) {
 //     for i in curr..d {
 //         let mut bp = b.clone();
 //         if bp[i] == 0 {
@@ -97,7 +97,7 @@ fn get_bins_1d(b: isize, bins: &mut Vec<isize>, u: isize) {
     }
 }
 
-pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
+pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
     let mut p = p.clone();
     let mut q = q.clone();
 
@@ -131,7 +131,7 @@ pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
                 if k < q.len() && q[k] != 0.0 {
                     let mass = min!(p[j], q[k]);
                     w += mass;
-                    cost += mass * (j as f64 - k as f64).abs();
+                    cost += mass * (j as f32 - k as f32).abs();
                     p[j] -= mass;
                     q[k] -= mass;
                 }
@@ -139,7 +139,7 @@ pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
         }
     }
 
-    return cost + (1.0 - w) * u as f64;
+    return cost + (1.0 - w) * u as f32;
 }
 
 #[cfg(test)]
@@ -147,7 +147,7 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    const ERROR: f64 = 0.05;
+    const ERROR: f32 = 0.05;
 
     #[test]
     fn test_emd_ak_aq() {

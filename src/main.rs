@@ -18,6 +18,8 @@ use rand::distributions::{Uniform};
 use rand::{SeedableRng, thread_rng, Rng};
 use rand::rngs::SmallRng;
 
+use rust_poker::card_range;
+
 use ehs::EHS;
 
 const N_THREADS: usize = 8;
@@ -73,7 +75,8 @@ fn generate_round(round: usize) {
 
     // NON CONSTS
     // number of hands in round
-    let round_size = ehs_table.indexers[round].size(if round > 0 { 1 } else { 0 }) as usize;
+    let round_size = ehs_table.indexers[round]
+        .size(if round > 0 { 1 } else { 0 }) as usize;
 
     // numer of hands to eval per thread
     let size_per_thread = (round_size / N_THREADS) as usize;
@@ -90,7 +93,7 @@ fn generate_round(round: usize) {
             // let mut rng = SmallRng::from_entropy();
             let mut rng = SmallRng::from_rng(&mut thread_rng).unwrap();
             let mut cards: Vec<u8> = vec![0; 7];
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for j in 0..slice.len() {
                     // print progress
                     // if (i == 0) && (j % 1000 == 0) {
@@ -130,10 +133,10 @@ fn generate_round(round: usize) {
                 }
             });
         }
-    });
+    }).unwrap();
 
     let restarts: usize = 100;
-    let n_buckets: usize = 300;
+    let n_buckets: usize = 16;
     let n_features: usize = features[0].histogram.len();
     let mut center: Vec<Histogram> = Vec::with_capacity(n_buckets);
     let mut rng = SmallRng::from_rng(&mut thread_rng).unwrap();
@@ -142,18 +145,20 @@ fn generate_round(round: usize) {
             restarts, n_buckets,
             &mut center, &features,
             &mut rng);
+
+    kmeans::kmeans(n_buckets, &mut features,
+            &emd::emd_1d, &mut center);
+
+    // let mut cards: Vec<u8> = vec![0; 2];
+    // for i in 0usize..169 {
+    //     ehs_table.indexers[0].get_hand(0, i as u64, cards.as_mut_slice());
+    //     let cards = card_range::Combo(cards[0], cards[1]).to_string();
+    //     println!("{} bin {}", cards, features[i].cluster);
+    // }
 }
 
-
-// fn kmeans(n_clusters: usize, dataset: &Vec<DataPoint>
-//           center: &Vec<Histogram>, cost_matrix: &Vec<Vec<f32>>) {
-// 
-// }
-
-
-
 fn main () {
-    // generate_round(0);
+    generate_round(0);
 }
 
 #[cfg(test)]

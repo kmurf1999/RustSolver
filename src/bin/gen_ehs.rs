@@ -44,7 +44,7 @@ fn main() {
         // current round 0->preflop, 3->river
         crossbeam::scope(|scope| {
             for (j, slice) in equity_table.chunks_mut(size_per_thread as usize).enumerate() {
-                scope.spawn(move || {
+                scope.spawn(move |_| {
                     let mut board_mask: u64;
                     let mut combo: Combo;
                     let mut hand_ranges: Vec<CardRange>;
@@ -80,7 +80,7 @@ fn main() {
                     }
                 });
             }
-        });
+        }).unwrap();
 
         // write to file
         file.pack_all(&equity_table[..]).unwrap();
