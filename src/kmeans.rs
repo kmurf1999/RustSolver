@@ -239,7 +239,6 @@ pub fn update_min_dists(
     }
 }
 
-
 /**
  * Updates the clusters for a dataset based on a given distance function
  * returns the number of elements that have changed
@@ -253,6 +252,7 @@ pub fn update_min_dists(
 /**
  * performs kmeans a on initialized centers using a specified distance function
  */
+
 /**
  * Computes the L2 norm distance between two histograms
  */
