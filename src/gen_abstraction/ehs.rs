@@ -7,7 +7,7 @@ use combine::Parser;
 use combine::parser::byte::num::le_f64;
 use std::io::{Error, ErrorKind};
 
-use rust_solver::hand_index::{ hand_indexer_t };
+use hand_indexer::hand_index::hand_indexer_t;
 
 /**
  * structur to interface with EHS.dat table

@@ -28,3 +28,27 @@ Can only be used on one round (typically the flop).
 
 Group hands based on the EMD of histograms that represend the probability distribution of the next chance outcome landing the current hand into a next-round bucket.
 
+# Data Design
+
+Infoset table
+
+for each round and for each player maintain a table of intosets
+Traverse the public tree one time and count action nodes for each
+player in a round
+
+each public chance outcome (board) has a card table which, for each player map:
+player-hand in range (u8, u8) -> hand-index -> cluster-idx -> zero indexed possible hands
+
+each round has a board table, which maps each possible board:
+board -> zero indexed possible board
+
+so to get the infoset
+
+infoset_table -> [round, player] -> [board] -> [action node idx] -> [hand-index, num_actions]
+
+(round + player)
+
+ get-infoset
+ - round
+ - player
+ - board

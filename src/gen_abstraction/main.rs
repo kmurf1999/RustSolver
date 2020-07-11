@@ -10,13 +10,11 @@ extern crate rust_poker;
 extern crate crossbeam;
 extern crate rayon;
 
-
 mod ehs;
 mod emd;
-mod hand_index;
 mod kmeans;
 
-use std::io::Write; // <--- ring flush() into scope
+use std::io::Write;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -392,8 +390,8 @@ fn generate_round(round: usize) {
 }
 
 fn main () {
-    generate_round(0);
-    // generate_ohcs(3, 100);
+    // generate_round(0);
+    generate_ohcs(3, 100);
 }
 
 #[cfg(test)]

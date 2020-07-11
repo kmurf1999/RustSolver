@@ -13,6 +13,7 @@ pub struct Options {
     pub stack_sizes: [u32; 2],
     // public card board mask
     pub board_mask: u64,
+    pub round: BettingRound,
     // initial size of pot
     pub starting_pot: u32,
     // if bet or raise is > than this threshold
@@ -43,7 +44,7 @@ impl Options {
             current: 0,
             bets_settled: false,
             pot: self.starting_pot,
-            round: BettingRound::Flop, // TODO
+            round: self.round,
             board_mask: self.board_mask,
             raise_count: 0
         }
@@ -52,12 +53,15 @@ impl Options {
 
 pub fn default_options() -> Options {
     Options {
+
         hand_ranges: [
             CardRange::from_str("random"),
             CardRange::from_str("random")
         ],
+
         stack_sizes: [500, 500],
-        board_mask: 0b10101,
+        board_mask: 0b11111,
+        round: BettingRound::River,
         starting_pot: 45,
         all_in_threshold: 0.67,
 

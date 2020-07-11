@@ -15,10 +15,10 @@ const MAX_PLAYERS: usize = 2;
 const MAX_ROUNDS: usize = 3; // flop, turn, river
 
 pub struct TreeBuilder {
-    arena: Arena<GameTreeNode>,
+    pub arena: Arena<GameTreeNode>,
     initial_state: GameState,
     // action node indices for each player on each round
-    node_index: [[usize; MAX_PLAYERS]; MAX_ROUNDS]
+    pub node_index: [[usize; MAX_PLAYERS]; MAX_ROUNDS]
 }
 
 impl TreeBuilder {

@@ -1,3 +1,6 @@
+use std::ops::{Generator, GeneratorState};
+use std::pin::Pin;
+
 /**
  * A tree structure
  *
@@ -51,5 +54,21 @@ impl<T> Arena<T> {
     }
     pub fn get_node(&self, idx: NodeId) -> &Node<T> {
         return &self.nodes[idx];
+    }
+    // returns a recursive generator for node a specified node
+    pub fn generator(&self, node: NodeId) -> Box<dyn Generator<Yield = &T, Return = ()> + '_> {
+        Box::new(move || {
+            let n = self.get_node(node);
+            yield &n.data;
+            for i in &n.children {
+                let mut subgen = Box::into_pin(self.generator(*i));
+                loop {
+                    match subgen.as_mut().resume(()) {
+                        GeneratorState::Yielded(data) => { yield data; },
+                        GeneratorState::Complete(_) => { break; }
+                    }
+                }
+            }
+        })
     }
 }
