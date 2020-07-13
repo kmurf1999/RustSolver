@@ -22,10 +22,10 @@ pub struct Node<T> {
 }
 
 impl<T> Node<T> {
-    pub fn new(data: T) -> Node<T> {
+    pub fn new(parent: Option<NodeId>, data: T) -> Self {
         Node {
             data: data,
-            parent: None,
+            parent: parent,
             children: Vec::new()
         }
     }
@@ -43,9 +43,9 @@ impl<T> Arena<T> {
             nodes: Vec::new()
         }
     }
-    pub fn create_node(&mut self, data: T) -> NodeId {
+    pub fn create_node(&mut self, parent: Option<NodeId>, data: T) -> NodeId {
         let index: NodeId = self.nodes.len();
-        let node = Node::new(data);
+        let node = Node::new(parent, data);
         self.nodes.push(node);
         return index;
     }

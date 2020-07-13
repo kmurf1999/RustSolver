@@ -1,164 +1,149 @@
 use std::iter::repeat;
 
 use crate::arena::{Arena, NodeId};
-use crate::nodes::{
-    GameTreeNode,
-    ActionNode,
-    TerminalNode, TerminalNodeType,
-    PublicChanceNode, PrivateChanceNode
-};
+use crate::nodes::*;
+// use crate::nodes::{
+//     GameTreeNode,
+//     ActionNode,
+//     TerminalNode, TerminalNodeType,
+//     PublicChanceNode, PrivateChanceNode
+// };
 use crate::state::{BettingRound, GameState};
-use crate::actions::{Action, ACTIONS};
+use crate::action_abstraction::{Action};
 use crate::options::Options;
 
-const MAX_PLAYERS: usize = 2;
-const MAX_ROUNDS: usize = 3; // flop, turn, river
-
-pub struct TreeBuilder {
-    pub arena: Arena<GameTreeNode>,
-    initial_state: GameState,
-    // action node indices for each player on each round
-    pub node_index: [[usize; MAX_PLAYERS]; MAX_ROUNDS]
+pub struct TreeBuilder<'a> {
+    pub tree: Arena<GameTreeNode>,
+    options: &'a Options,
+    n_actions: usize
+    // pub action_node_count: usize,
+    // initial_state: GameState,
 }
 
-impl TreeBuilder {
-    pub fn init(options: &Options) -> TreeBuilder {
+impl<'a> TreeBuilder<'a>{
+    pub fn init(options: &'a Options) -> Self {
         TreeBuilder {
-            arena: Arena::<GameTreeNode>::new(),
-            initial_state: options.to_state(),
-            node_index: [[0; MAX_PLAYERS]; MAX_ROUNDS]
+            options: options,
+            tree: Arena::<GameTreeNode>::new(),
+            n_actions: 0
         }
     }
     pub fn build(&mut self) {
-        self.build_private_chance_node(0, self.initial_state);
+        let initial_state = GameState::from(self.options);
+        self.build_private_chance(initial_state);
     }
-    fn build_action_nodes(&mut self, parent: NodeId, state: GameState) -> NodeId {
-        let node = self.arena.create_node(GameTreeNode::ActionNode(
+    pub fn action_count(&self) -> usize {
+        return self.n_actions;
+    }
+    pub fn print(&self) {
+        self.print_node(0, 0);
+    }
+    fn print_node(&self, node: NodeId, depth: usize) {
+        let n = self.tree.get_node(node);
+        let spaces = repeat("  ").take(depth).collect::<String>();
+        match &n.data {
+            GameTreeNode::PrivateChance => {
+                println!("{}Private Chance", spaces);
+                self.print_node(n.children[0], depth + 1);
+            },
+            GameTreeNode::PublicChance => {
+                println!("{}Public Chance", spaces);
+                self.print_node(n.children[0], depth + 1);
+            },
+            GameTreeNode::Action(an) => {
+                for (i, action) in an.actions.iter().enumerate() {
+                    println!("{}action: {}, player: {}",
+                             spaces, action.to_string(), an.player);
+                    self.print_node(n.children[i], depth + 1);
+                }
+            },
+            GameTreeNode::Terminal(tn) => {
+                println!("{}{}: {}", spaces, tn.ttype.to_string(), tn.value);
+            }
+        }
+    }
+    /**
+     * build the private chance root of the tree
+     */
+    fn build_private_chance(&mut self, state: GameState) {
+
+        let round = 0;
+        let node = self.tree.create_node(None, GameTreeNode::PrivateChance);
+        let child = self.build_action_nodes(node, round, state);
+        self.tree.get_node_mut(node).add_child(child);
+    }
+    fn build_action_nodes(&mut self, parent: NodeId,
+            round: u8, state: GameState) -> NodeId {
+
+        let node_id = self.tree.create_node(Some(parent), GameTreeNode::Action(
             ActionNode {
-                index: self.node_index[state.round.to_usize()]
-                    [usize::from(state.current)],
                 player: state.current,
+                index: self.n_actions,
+                round: round,
                 actions: Vec::new()
             }
         ));
+        self.n_actions += 1;
 
-        self.node_index[state.round.to_usize()][usize::from(state.current)] += 1;
-
-        // link to parent
-        self.arena.get_node_mut(node).set_parent(parent);
-
-        for action in ACTIONS.iter() {
-            self.build_action(node, action, state);
+        match &self.tree.get_node(node_id).data {
+            GameTreeNode::Action(_) => {
+                for action in state.valid_actions(&self.options.action_abstraction) {
+                    self.build_action(node_id, round, state, action);
+                }
+            },
+            _ => panic!("should be action node")
         }
 
-        return node;
+        return node_id
     }
-    fn build_action(&mut self, node: NodeId, action: &Action, state: GameState) {
-        if state.is_valid_action(action) {
-            let next_state = state.apply_action(action);
-            if next_state.bets_settled {
-                // if fold, allin, or showdown...
-                if next_state.round == BettingRound::River
-                        || next_state.is_allin() 
-                        || next_state.is_uncontested() {
-                    // build terminal node
-                    let child = self.build_terminal_node(node, next_state);
-                    self.arena.get_node_mut(node).add_child(child);
-                } else {
-                    // build next round chance node
-                    let child = self.build_public_chance_node(node, next_state.to_next_street());
-                    self.arena.get_node_mut(node).add_child(child);
-                }
+    fn build_action(&mut self, node: NodeId,
+                    round: u8, state: GameState, action: Action) {
+
+        let next_state = state.apply_action(&action);
+        let child;
+        if next_state.bets_settled {
+            if next_state.is_terminal() {
+                // build terminal node
+                child = self.build_terminal(node, next_state);
             } else {
-                // build more action nodes
-                let child = self.build_action_nodes(node, next_state);
-                self.arena.get_node_mut(node).add_child(child);
+                // build next round chance node
+                child = self.build_public_chance(node, round, next_state.to_next_street());
             }
-            // add action
-            match &mut self.arena.get_node_mut(node).data {
-                GameTreeNode::ActionNode(action_node) => {
-                    action_node.actions.push(action.clone());
-                },
-                _ => {
-                    // throw error
-                    assert!(false);
-                }
-            }
+        } else {
+            child = self.build_action_nodes(node, round, next_state);
+        }
+
+        self.tree.get_node_mut(node).add_child(child);
+        match &mut self.tree.get_node_mut(node).data {
+            GameTreeNode::Action(an) => {
+                an.actions.push(action);
+            },
+            _ => panic!("must be action node")
         }
     }
-    fn build_terminal_node(&mut self, parent: NodeId, state: GameState) -> NodeId {
+    fn build_terminal(&mut self, parent: NodeId, state: GameState) -> NodeId {
         let mut terminal = TerminalNode {
-            value: state.pot / 2,
-            node_type: TerminalNodeType::Showdown,
-            last_to_act: state.current,
-            board_mask: state.board_mask
+            value: state.pot,
+            ttype: TerminalType::SHOWDOWN,
+            last_to_act: state.current
         };
-        if state.is_allin() {
-            terminal.node_type = TerminalNodeType::Allin
+        if state.is_allin() && state.round != BettingRound::River {
+            terminal.ttype = TerminalType::ALLIN;
         }
         if state.is_uncontested() {
-            terminal.node_type = TerminalNodeType::Uncontested
+            terminal.ttype = TerminalType::UNCONTESTED;
         }
-        let node = self.arena.create_node(
-            GameTreeNode::TerminalNode(terminal));
-
-        // link to parent
-        self.arena.get_node_mut(node).set_parent(parent);
+        let node = self.tree.create_node(
+            Some(parent),
+            GameTreeNode::Terminal(terminal));
         return node;
     }
-    fn build_private_chance_node(&mut self, parent: NodeId, state: GameState) -> NodeId {
-        let chance = PrivateChanceNode {
-            board_mask: state.board_mask
-        };
-        let node = self.arena.create_node(GameTreeNode::PrivateChanceNode(chance));
-
-        let child = self.build_action_nodes(node, state);
-        self.arena.get_node_mut(node).add_child(child);
-        self.arena.get_node_mut(node).set_parent(parent);
+    fn build_public_chance(&mut self, parent: NodeId, round: u8, state: GameState) -> NodeId {
+        let node = self.tree.create_node(
+            Some(parent),
+            GameTreeNode::PublicChance);
+        let child = self.build_action_nodes(node, round + 1, state);
+        self.tree.get_node_mut(node).add_child(child);
         return node;
-    }
-    fn build_public_chance_node(&mut self, parent: NodeId, state: GameState) -> NodeId {
-        let chance = PublicChanceNode {
-            board_mask: state.board_mask
-        };
-        let node = self.arena.create_node(GameTreeNode::PublicChanceNode(chance));
-
-        let child = self.build_action_nodes(node, state);
-        self.arena.get_node_mut(node).add_child(child);
-        self.arena.get_node_mut(node).set_parent(parent);
-        return node;
-    }
-    pub fn print_node(&self, node: NodeId, depth: usize) {
-        let n = self.arena.get_node(node);
-        let spaces = repeat(' ').take(depth).collect::<String>();
-        match &n.data {
-            GameTreeNode::ActionNode(an) => {
-                for (i, action) in an.actions.iter().enumerate() {
-                    println!("{}{} - player: {}, index: {}", spaces, action.to_string(), an.player, an.index);
-                    self.print_node(n.children[i], depth + 2);
-                }
-            },
-            GameTreeNode::TerminalNode(tn) => {
-                match &tn.node_type {
-                    TerminalNodeType::Allin => {
-                        println!("{}Allin - value: {}", spaces, tn.value);
-                    },
-                    TerminalNodeType::Showdown => {
-                        println!("{}Showdown - value: {}", spaces, tn.value);
-                    },
-                    TerminalNodeType::Uncontested => {
-                        println!("{}Uncontested - value: {}", spaces, tn.value);
-                    }
-                }
-            },
-            GameTreeNode::PrivateChanceNode(_) => {
-                println!("{}Private Chance", spaces);
-                self.print_node(n.children[0], depth + 2);
-            },
-            GameTreeNode::PublicChanceNode(_) => {
-                println!("{}Public Chance", spaces);
-                self.print_node(n.children[0], depth + 2);
-            }
-        }
     }
 }

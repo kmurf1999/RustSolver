@@ -1,13 +1,7 @@
-use crate::actions::Action;
+use crate::action_abstraction::{ActionAbstraction, Action};
+use crate::constants::*;
+use crate::options::Options;
 
-static ALLIN_THRESHOLD: f32 = 0.67;
-
-// maximum raises per round
-// 2 means 3-bet
-// 3 means 4-bet
-static MAX_RAISES: u8 = 2;
-
-const MAX_PLAYERS: usize = 2;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum BettingRound {
@@ -48,12 +42,32 @@ impl PlayerState {
 #[derive(Debug, Copy, Clone)]
 pub struct GameState {
     pub players: [PlayerState; MAX_PLAYERS],
-    pub current: u8,
-    pub bets_settled: bool,
     pub pot: u32,
+    pub raise_count: u8,
+    pub current: u8,
     pub round: BettingRound,
-    pub board_mask: u64,
-    pub raise_count: u8
+    pub bets_settled: bool,
+}
+
+impl From<&Options> for GameState {
+    fn from(options: &Options) -> Self {
+        GameState {
+            players: [
+                PlayerState::init(options.stack_sizes[0]),
+                PlayerState::init(options.stack_sizes[1]),
+            ],
+            round: match options.board_mask.count_ones() {
+                3 => BettingRound::Flop,
+                4 => BettingRound::Turn,
+                5 => BettingRound::River,
+                _ => panic!("invalid board mask")
+            },
+            current: 0,
+            bets_settled: false,
+            pot: options.starting_pot,
+            raise_count: 0
+        }
+    }
 }
 
 impl GameState {
@@ -76,6 +90,11 @@ impl GameState {
             }
         }
         return false;
+    }
+    pub fn is_terminal(&self) -> bool {
+        return self.round == BettingRound::River
+            || self.is_allin()
+            || self.is_uncontested();
     }
     pub fn is_allin(&self) -> bool {
         for p in &self.players {
@@ -105,48 +124,53 @@ impl GameState {
         }
         return new_state;
     }
-    pub fn is_valid_action(&self, action: &Action) -> bool {
-        match action {
-            Action::Bet(_) => {
-                // if other player hasn't bet
-                // and we're not all in
-                return self.other_player().wager == 0
-                    && self.current_player().stack != 0;
+    pub fn valid_actions(&self, action_abs: &ActionAbstraction) -> Vec<Action> {
+        let mut actions: Vec<Action> = Vec::new();
 
-            },
-            Action::Raise(_) => {
-                // other player has bigger wager than us
-                return (self.current_player().wager
-                    < self.other_player().wager)
-                    && self.raise_count < MAX_RAISES
-                    && self.current_player().stack != 0;
-            },
-            Action::Call => {
-                // if other player has bet,
-                // and current player isn't all in
-                return (self.current_player().wager
-                    < self.other_player().wager)
-                    && self.current_player().stack != 0;
-            },
-            Action::Check => {
-                // if other player hasn't bet
-                return self.other_player().wager == 0;
-            },
-            Action::Fold => {
-                // if other player has bet
-                // and current player isn't all in
-                return (self.other_player().wager
-                    > self.current_player().wager)
-                    && self.current_player().stack != 0;
+        // TODO 
+        let round = match action_abs.bet_sizes.len() {
+            1 => self.round.to_usize() - 2,
+            2 => self.round.to_usize() - 1,
+            3 => self.round.to_usize(),
+            _ => panic!("")
+        };
+
+        if self.other_player().wager == 0 {
+            actions.push(Action::Check);
+        }
+        if self.other_player().wager > self.current_player().wager {
+            actions.push(Action::Call);
+        }
+        if self.other_player().wager > self.current_player().wager {
+            actions.push(Action::Fold);
+        }
+        if self.other_player().wager == 0 {
+            for bet_size in &action_abs.bet_sizes[round] {
+                let chips = bet_size * self.pot as f64;
+                actions.push(Action::Bet(*bet_size));
+                if chips > (ALLIN_THRESHOLD * self.current_player().stack as f64) {
+                    break;
+                }
             }
         }
+        if self.raise_count < MAX_RAISES && !self.is_allin() && self.other_player().wager > self.current_player().wager {
+            for raise_size in &action_abs.raise_sizes[round] {
+                let chips = raise_size * self.other_player().wager as f64;
+                actions.push(Action::Raise(*raise_size));
+                if chips > (ALLIN_THRESHOLD * self.current_player().stack as f64) {
+                    break;
+                }
+            }
+        }
+
+        return actions;
     }
     pub fn apply_action(&self, action: &Action) -> GameState {
         let mut new_state = self.clone();
         match action {
             Action::Bet(amt) => {
-                let mut chips = (new_state.pot as f32 * amt) as u32;
-                if chips > (new_state.current_player().stack as f32 * ALLIN_THRESHOLD) as u32 {
+                let mut chips = (new_state.pot as f64 * amt) as u32;
+                if chips > (new_state.current_player().stack as f64 * ALLIN_THRESHOLD) as u32 {
                     chips = new_state.current_player().stack;
                 }
                 new_state.current_player_mut().stack -= chips;
@@ -155,8 +179,8 @@ impl GameState {
                 new_state.current = 1 - new_state.current;
             },
             Action::Raise(amt) => {
-                let mut chips = (new_state.other_player().wager as f32 * amt) as u32;
-                if chips > (new_state.current_player().stack as f32 * ALLIN_THRESHOLD) as u32 {
+                let mut chips = (new_state.other_player().wager as f64 * amt) as u32;
+                if chips > (new_state.current_player().stack as f64 * ALLIN_THRESHOLD) as u32 {
                     chips = new_state.current_player().stack;
                 }
                 new_state.current_player_mut().stack -= chips;
