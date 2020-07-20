@@ -1,10 +1,11 @@
 use crate::action_abstraction::Action;
+use crate::state::BettingRound;
 
 pub struct ActionNode {
     pub actions: Vec<Action>,
     pub index: usize,
     pub player: u8,
-    pub round: u8
+    pub round_idx: u8
 }
 
 /**
@@ -30,6 +31,7 @@ pub struct TerminalNode {
     pub value: u32, // size of pot
     pub ttype: TerminalType,
     pub last_to_act: u8, // 0 or 1
+    pub round: BettingRound
 }
 
 pub enum GameTreeNode {

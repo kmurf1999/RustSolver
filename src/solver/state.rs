@@ -117,10 +117,7 @@ impl GameState {
             BettingRound::Turn => {
                 new_state.round = BettingRound::River;
             },
-            _ => {
-                // do nothing
-                assert!(false);
-            }
+            _ => panic!("Should not get here")
         }
         return new_state;
     }
@@ -204,10 +201,10 @@ impl GameState {
                 new_state.bets_settled = true;
             },
             Action::Check => {
+                new_state.current = 1 - new_state.current;
                 if usize::from(new_state.current) == MAX_PLAYERS - 1 {
                     new_state.bets_settled = true;
                 }
-                new_state.current = 1 - new_state.current;
             },
             Action::Fold => {
                 new_state.current_player_mut().has_folded = true;

@@ -2,7 +2,7 @@
  * Post Flop Solver options
  */
 
-use rust_poker::card_range::CardRange;
+use rust_poker::hand_range::{HandRange, get_card_mask};
 use crate::state::{BettingRound, GameState, PlayerState};
 use crate::action_abstraction::{ActionAbstraction};
 
@@ -10,7 +10,7 @@ use crate::action_abstraction::{ActionAbstraction};
 pub struct Options {
     pub n_players: usize,
     // hand range for each player
-    pub hand_ranges: Vec<CardRange>,
+    pub hand_ranges: Vec<HandRange>,
     // starting stack for each player
     pub stack_sizes: Vec<u32>,
     // public card board mask
@@ -54,19 +54,19 @@ pub fn default_river() -> Options {
 
         n_players: 2,
         stack_sizes: vec![500, 500],
-        board_mask: 0b11111,
+        board_mask: get_card_mask("Kh5h7sJd3h"),
         starting_pot: 35,
         all_in_threshold: 0.67,
         max_raises: 2,
 
         hand_ranges: vec![
-            CardRange::from_str("random"),
-            CardRange::from_str("random")
+            HandRange::from_string("random".to_string()),
+            HandRange::from_string("random".to_string())
         ],
 
         action_abstraction: ActionAbstraction {
             bet_sizes: vec![
-                vec![0.5, 1.0, 2.0]
+                vec![0.5, 1.0]
             ],
             raise_sizes: vec![
                 vec![3.0],

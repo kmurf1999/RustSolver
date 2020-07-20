@@ -1,17 +1,19 @@
 use hashbrown::HashMap;
-use hand_indexer::hand_index::hand_indexer_t;
-
-use rust_poker::card_range::CardRange;
-use rayon::prelude::*;
+use rust_poker::hand_indexer_s;
+use rust_poker::hand_range::HandRange;
+use rust_poker::equity_calculator::remove_invalid_combos;
 use crate::state::BettingRound;
+use rayon::prelude::*;
+use std::sync::mpsc::channel;
+use std::thread;
 
+/// Card abstraction interface for a single round
 pub struct ISOMORPHIC {
-    hand_indexer: hand_indexer_t
-    // map of hand_index -> cluster index
-    // (one for each player)
-    // cluster_map: [HashMap<u64, usize>; 2],
-    // number of differ clusters per player
-    // pub count: [usize; 2],
+    hand_indexer: hand_indexer_s,
+    /// hand_index -> cluster_idx for each player
+    cluster_map: Vec<HashMap<u64,usize>>,
+    /// the number of clusters for each player
+    size: Vec<usize>
 }
 
 pub struct EMD {
@@ -24,183 +26,170 @@ pub struct OCHS {
 
 pub trait CardAbstraction {
     type AbsType;
-    /**
-     * round: the round we are using the abstraction for
-     */
-    fn init(round: BettingRound) -> Self::AbsType;
-    fn get_cluster(&self, private_cards: (u8, u8), board_mask: u64) -> u64;
+    fn init(hand_ranges: &Vec<HandRange>, board_mask: u64, round: BettingRound) -> Self::AbsType;
+    fn get_cluster(&self, cards: &[u8], player: u8) -> usize;
+    fn get_size(&self, player: u8) -> usize;
 }
 
 impl CardAbstraction for ISOMORPHIC {
+
     type AbsType = ISOMORPHIC;
-    fn init(round: BettingRound) -> ISOMORPHIC {
+
+    fn init(hand_ranges: &Vec<HandRange>, initial_board_mask: u64, round: BettingRound) -> Self::AbsType {
+
+        const N_THREADS: usize = 4;
+        const CHANNEL_SIZE: usize = 10;
+
+        let n_players = hand_ranges.len();
+        let n_board_cards = initial_board_mask.count_ones() as usize;
+
         let hand_indexer = match round {
-            BettingRound::Flop => hand_indexer_t::init(2, vec![2, 3]),
-            BettingRound::Turn => hand_indexer_t::init(2, vec![2, 4]),
-            BettingRound::River => hand_indexer_t::init(2, vec![2, 5])
+            BettingRound::Flop => hand_indexer_s::init(2, vec![2, 3]),
+            BettingRound::Turn => hand_indexer_s::init(2, vec![2, 4]),
+            BettingRound::River => hand_indexer_s::init(2, vec![2, 5])
         };
+
+        let mut cards = [0u8; 7];
+        let mut board_mask = initial_board_mask;
+        for i in 0..n_board_cards {
+            cards[i+2] = board_mask.trailing_zeros() as u8;
+            board_mask ^= 1u64 << board_mask.trailing_zeros();
+        }
+
+        let cards_left = match round {
+            BettingRound::Flop => 3 - n_board_cards,
+            BettingRound::Turn => 4 - n_board_cards,
+            BettingRound::River => 5 - n_board_cards
+        };
+
+        let mut cluster_map = vec![HashMap::new(); n_players];
+        let mut size = vec![0usize; 2];
+
+        crossbeam::scope(|scope| {
+            let iter = cluster_map.chunks_mut(1).zip(size.chunks_mut(1)).into_iter();
+            iter.enumerate().for_each(|(i, (map, s))| {
+
+                let (tx, rx) = crossbeam::channel::bounded::<u64>(1000);
+
+                let consumer = scope.spawn(move |_| {
+                    for r in rx {
+                        if !map[0].contains_key(&r) {
+                            map[0].insert(r, s[0]);
+                            s[0] += 1;
+                        }
+                    }
+                });
+
+                hand_ranges[i].hands.par_iter().for_each(|hand| {
+                    let tx = tx.clone();
+                    let hand_mask = (1u64 << hand.0) | (1u64 << hand.1);
+                    let mut cards = cards.clone();
+                    cards[0] = hand.0;
+                    cards[1] = hand.1;
+                    match cards_left {
+                        0 => {
+                            let index = hand_indexer.get_index(&cards);
+                            tx.send(index).unwrap();
+                        },
+                        1 => {
+                            let used_card_mask =
+                                hand_mask | initial_board_mask;
+                            for i in 0u8..52 {
+                                if ((1u64 << i) & used_card_mask) != 0 {
+                                    continue;
+                                }
+                                cards[5] = i;
+
+                                let index = hand_indexer.get_index(&cards);
+                                tx.send(index).unwrap();
+                            }
+                        },
+                        2 => {
+                            let used_card_mask =
+                                hand_mask | initial_board_mask;
+                            for i in 0u8..52 {
+                                if ((1u64 << i) & used_card_mask) != 0 {
+                                    continue;
+                                }
+                                cards[5] = i;
+                                let used_card_mask =
+                                    (1u64 << i) | used_card_mask;
+                                for j in 0..i {
+                                    if ((1u64 << j) & used_card_mask) != 0 {
+                                        continue;
+                                    }
+                                    cards[6] = j;
+                                    let index = hand_indexer.get_index(&cards);
+                                    tx.send(index).unwrap();
+                                }
+                            }
+                        },
+                        _ => panic!("invalid number of board cards")
+                    }
+                    drop(tx);
+                });
+                drop(tx);
+                consumer.join().unwrap();
+            });
+        }).unwrap();
+
         ISOMORPHIC {
-            hand_indexer: hand_indexer
+            hand_indexer: hand_indexer,
+            cluster_map,
+            size
         }
     }
-    fn get_cluster(&self, private_cards: (u8, u8), mut board_mask: u64) -> u64 {
-        let mut cards: Vec<u8> = Vec::new();
-        cards.push(private_cards.0);
-        cards.push(private_cards.1);
-        while board_mask != 0 {
-            let c: u8 = board_mask.trailing_zeros() as u8;
-            cards.push(c);
-            board_mask ^= 1u64 << c;
-        }
-        return self.hand_indexer.get_index(&cards);
+    fn get_cluster(&self, cards: &[u8], player: u8) -> usize {
+        let hand_index = self.hand_indexer.get_index(cards);
+        return *self.cluster_map[usize::from(player)]
+            .get(&hand_index)
+            .unwrap();
+    }
+    fn get_size(&self, player: u8) -> usize {
+        return self.size[usize::from(player)];
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+    use crate::options;
+    use std::time::{Duration, Instant};
 
-// impl CardAbstraction for ISOMORPHIC {
-//     type AbsType = ISOMORPHIC;
-// 
-//     fn init(round: BettingRound, initial_board: u64, hand_ranges: &[CardRange]) -> ISOMORPHIC {
-//         let (hand_indexer, n_board_cards, total_cards) = match round {
-//             BettingRound::Flop => (hand_indexer_t::init(2, vec![2, 3]), initial_board.count_ones() as usize, 5),
-//             BettingRound::Turn => (hand_indexer_t::init(2, vec![2, 4]), initial_board.count_ones() as usize, 6),
-//             BettingRound::River => (hand_indexer_t::init(2, vec![2, 5]), initial_board.count_ones() as usize, 7)
-//         };
-//         let mut cluster_map: [HashMap<u64, usize>; 2] = [
-//             HashMap::new(),
-//             HashMap::new(),
-//         ];
-//         let mut count_arr = [0usize; 2];
-// 
-//         let mut cards = vec![0u8; total_cards];
-//         // copy board cards to cards
-//         let mut board = initial_board;
-//         for i in 0..n_board_cards {
-//             let c = board.trailing_zeros();
-//             cards[i+2] = c as u8;
-//             board ^= 1u64 << c;
-//         }
-//         crossbeam::scope(|scope| {
-//             for (player, (map, count)) in cluster_map.chunks_mut(2).zip(count_arr.chunks_mut(2)).enumerate() {
-//                 let (tx, rx) = crossbeam::channel::bounded::<u64>(100);
-// 
-//                 // consumer
-//                 scope.spawn(move |_| {
-//                     let mut c = 0;
-//                     for index in rx {
-//                         if !map[0].contains_key(&index) {
-//                             map[0].insert(index, c);
-//                             c += 1;
-//                         }
-//                     }
-//                     count[0] = c;
-//                 });
-// 
-//                 // spawn producers
-//                 for slice in hand_ranges[player].hands.chunks(8) {
-//                     let tx = tx.clone();
-//                     let mut cards = cards.clone();
-//                     scope.spawn(move |_| {
-//                         for c in slice {
-//                             let hand_mask = (1u64 << c.0) | (1u64 << c.1);
-//                             if (hand_mask & initial_board) != 0 {
-//                                 continue;
-//                             }
-//                             cards[0] = c.0;
-//                             cards[1] = c.1;
-//                             match total_cards - n_board_cards - 2 {
-//                                 0 => {
-//                                     let index = hand_indexer.get_index(&cards);
-//                                     tx.send(index).unwrap();
-//                                 },
-//                                 1 => {
-//                                     let used_card_mask = hand_mask | initial_board;
-//                                     for i in 0u8..52 {
-//                                         if ((1u64 << i) & used_card_mask) != 0 {
-//                                             continue;
-//                                         }
-//                                         cards[5] = i;
-//                                         let index = hand_indexer.get_index(&cards);
-//                                         tx.send(index).unwrap();
-//                                     }
-// 
-//                                 },
-//                                 2 => {
-//                                     let used_card_mask = hand_mask | initial_board;
-//                                     for i in 0u8..52 {
-//                                         if ((1u64 << i) & used_card_mask) != 0 {
-//                                             continue;
-//                                         }
-//                                         cards[5] = i;
-//                                         let used_card_mask = (1u64 << i) | used_card_mask;
-//                                         for j in 0..i {
-//                                             if ((1u64 << j) & used_card_mask) != 0 {
-//                                                 continue;
-//                                             }
-//                                             cards[6] = j;
-//                                             let index = hand_indexer.get_index(&cards);
-//                                             tx.send(index).unwrap();
-//                                         }
-//                                      }
-//                                  },
-//                                 _ => { panic!("invalid card count"); }
-//                             }
-// 
-//                         }
-//                     });
-//                 }
-//             }
-//         }).unwrap();
-// 
-//         ISOMORPHIC {
-//             hand_indexer: hand_indexer,
-//             count: count_arr,
-//             cluster_map,
-//             round: round,
-//         }
-//     }
-//     fn get_index(&self, hand: &u64) -> usize {
-//         return 0;
-//     }
-// }
+    #[bench]
+    fn bench_init_turn(b: &mut Bencher) {
+        // 4,418,307 ns/iter (+/- 152,791)
+        let round = BettingRound::Turn;
+        let flop_mask: u64 = 0b111;
+        let mut hand_ranges = HandRange::from_strings(["random".to_string(), "random".to_string()].to_vec());
+        remove_invalid_combos(&mut hand_ranges, flop_mask);
+        b.iter(|| {
+            let card_abs = ISOMORPHIC::init(&hand_ranges, flop_mask, round);
+            assert_eq!(card_abs.size[1], 12888);
+        });
+    }
 
-// impl CardAbstraction for EMD {
-//     fn init() {}
-// }
-// 
-// impl CardAbstraction for OCHS {
-//     fn init() {}
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use test::Bencher;
-//     use crate::options;
-//     use std::time::{Duration, Instant};
-// 
-//     #[bench]
-//     fn bench_turn(b: &mut Bencher) {
-//         // best score 9,125,032 ns/iter
-//         // best with 1000 buffer channel and 8 producers
-//         let round = BettingRound::Turn;
-//         let flop_mask: u64 = 0b111;
-//         let hand_ranges = CardRange::from_str_arr(["random", "random"].to_vec());
-//         b.iter(|| {
-//             let card_abs = ISOMORPHIC::init(round, flop_mask, &hand_ranges);
-//             assert_eq!(card_abs.count[0], 12888);
-//         });
-//     }
-// 
-//     #[test]
-//     fn time_river() {
-//         // best score 104853038 ns
-//         let round = BettingRound::River;
-//         let flop_mask: u64 = 0b111;
-//         let hand_ranges = CardRange::from_str_arr(["random", "random"].to_vec());
-//         let start = Instant::now();
-//         let card_abs = ISOMORPHIC::init(round, flop_mask, &hand_ranges);
-//         let duration = start.elapsed().subsec_nanos();
-//         println!("{}", duration);
-//         assert!(duration < 104853038);
-//     }
-// }
+    #[test]
+    fn test_init_river() {
+        let round = BettingRound::River;
+        let flop_mask: u64 = 0b11111;
+        let mut hand_ranges = HandRange::from_strings(["random".to_string(), "random".to_string()].to_vec());
+        remove_invalid_combos(&mut hand_ranges, flop_mask);
+        let card_abs = ISOMORPHIC::init(&hand_ranges, flop_mask, round);
+        assert_eq!(331, card_abs.size[0]);
+        assert_eq!(331, card_abs.size[1]);
+        // test some indexes
+        assert_eq!(
+            card_abs.get_cluster(&[51u8, 5, 0, 1, 2, 3, 4], 0),
+            card_abs.get_cluster(&[50u8, 5, 0, 1, 2, 3, 4], 0)
+        );
+        assert_eq!(
+            card_abs.get_cluster(&[51u8, 5, 0, 1, 2, 3, 4], 1),
+            card_abs.get_cluster(&[50u8, 5, 0, 1, 2, 3, 4], 1)
+        );
+        assert_ne!(
+            card_abs.get_cluster(&[6, 5, 0, 1, 2, 3, 4], 1),
+            card_abs.get_cluster(&[50u8, 5, 0, 1, 2, 3, 4], 1)
+        );
+    }
+}

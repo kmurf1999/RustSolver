@@ -1,41 +1,33 @@
 use std::iter::repeat;
-
-use crate::arena::{Arena, NodeId};
+use crate::tree::{Tree, NodeId};
 use crate::nodes::*;
-// use crate::nodes::{
-//     GameTreeNode,
-//     ActionNode,
-//     TerminalNode, TerminalNodeType,
-//     PublicChanceNode, PrivateChanceNode
-// };
 use crate::state::{BettingRound, GameState};
 use crate::action_abstraction::{Action};
 use crate::options::Options;
 
-pub struct TreeBuilder<'a> {
-    pub tree: Arena<GameTreeNode>,
+
+pub fn build_game_tree(options: &Options) -> (usize, Tree<GameTreeNode>) {
+    let mut builder = TreeBuilder::init(options);
+    let initial_state = GameState::from(options);
+    builder.build_private_chance(initial_state);
+    return (builder.n_actions, builder.tree);
+}
+
+struct TreeBuilder<'a> {
+    tree: Tree<GameTreeNode>,
     options: &'a Options,
     n_actions: usize
-    // pub action_node_count: usize,
-    // initial_state: GameState,
 }
 
 impl<'a> TreeBuilder<'a>{
-    pub fn init(options: &'a Options) -> Self {
+    fn init(options: &'a Options) -> Self {
         TreeBuilder {
             options: options,
-            tree: Arena::<GameTreeNode>::new(),
+            tree: Tree::<GameTreeNode>::new(),
             n_actions: 0
         }
     }
-    pub fn build(&mut self) {
-        let initial_state = GameState::from(self.options);
-        self.build_private_chance(initial_state);
-    }
-    pub fn action_count(&self) -> usize {
-        return self.n_actions;
-    }
-    pub fn print(&self) {
+    fn print(&self) {
         self.print_node(0, 0);
     }
     fn print_node(&self, node: NodeId, depth: usize) {
@@ -52,13 +44,13 @@ impl<'a> TreeBuilder<'a>{
             },
             GameTreeNode::Action(an) => {
                 for (i, action) in an.actions.iter().enumerate() {
-                    println!("{}action: {}, player: {}",
-                             spaces, action.to_string(), an.player);
+                    println!("{}action: {}, idx: {} player: {}",
+                             spaces, action.to_string(), an.index, an.player);
                     self.print_node(n.children[i], depth + 1);
                 }
             },
             GameTreeNode::Terminal(tn) => {
-                println!("{}{}: {}", spaces, tn.ttype.to_string(), tn.value);
+                println!("{}{}: last to act {} {}", spaces, tn.ttype.to_string(), tn.last_to_act, tn.value);
             }
         }
     }
@@ -67,19 +59,19 @@ impl<'a> TreeBuilder<'a>{
      */
     fn build_private_chance(&mut self, state: GameState) {
 
-        let round = 0;
+        let round_idx = 0;
         let node = self.tree.create_node(None, GameTreeNode::PrivateChance);
-        let child = self.build_action_nodes(node, round, state);
+        let child = self.build_action_nodes(node, round_idx, state);
         self.tree.get_node_mut(node).add_child(child);
     }
     fn build_action_nodes(&mut self, parent: NodeId,
-            round: u8, state: GameState) -> NodeId {
+            round_idx: u8, state: GameState) -> NodeId {
 
         let node_id = self.tree.create_node(Some(parent), GameTreeNode::Action(
             ActionNode {
                 player: state.current,
                 index: self.n_actions,
-                round: round,
+                round_idx: round_idx,
                 actions: Vec::new()
             }
         ));
@@ -88,7 +80,7 @@ impl<'a> TreeBuilder<'a>{
         match &self.tree.get_node(node_id).data {
             GameTreeNode::Action(_) => {
                 for action in state.valid_actions(&self.options.action_abstraction) {
-                    self.build_action(node_id, round, state, action);
+                    self.build_action(node_id, round_idx, state, action);
                 }
             },
             _ => panic!("should be action node")
@@ -97,7 +89,7 @@ impl<'a> TreeBuilder<'a>{
         return node_id
     }
     fn build_action(&mut self, node: NodeId,
-                    round: u8, state: GameState, action: Action) {
+                    round_idx: u8, state: GameState, action: Action) {
 
         let next_state = state.apply_action(&action);
         let child;
@@ -107,10 +99,10 @@ impl<'a> TreeBuilder<'a>{
                 child = self.build_terminal(node, next_state);
             } else {
                 // build next round chance node
-                child = self.build_public_chance(node, round, next_state.to_next_street());
+                child = self.build_public_chance(node, round_idx, next_state.to_next_street());
             }
         } else {
-            child = self.build_action_nodes(node, round, next_state);
+            child = self.build_action_nodes(node, round_idx, next_state);
         }
 
         self.tree.get_node_mut(node).add_child(child);
@@ -125,7 +117,8 @@ impl<'a> TreeBuilder<'a>{
         let mut terminal = TerminalNode {
             value: state.pot,
             ttype: TerminalType::SHOWDOWN,
-            last_to_act: state.current
+            last_to_act: state.current,
+            round: state.round,
         };
         if state.is_allin() && state.round != BettingRound::River {
             terminal.ttype = TerminalType::ALLIN;
@@ -138,11 +131,11 @@ impl<'a> TreeBuilder<'a>{
             GameTreeNode::Terminal(terminal));
         return node;
     }
-    fn build_public_chance(&mut self, parent: NodeId, round: u8, state: GameState) -> NodeId {
+    fn build_public_chance(&mut self, parent: NodeId, round_idx: u8, state: GameState) -> NodeId {
         let node = self.tree.create_node(
             Some(parent),
             GameTreeNode::PublicChance);
-        let child = self.build_action_nodes(node, round + 1, state);
+        let child = self.build_action_nodes(node, round_idx + 1, state);
         self.tree.get_node_mut(node).add_child(child);
         return node;
     }

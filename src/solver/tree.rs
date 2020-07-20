@@ -11,7 +11,7 @@ use std::pin::Pin;
  */
 pub type NodeId = usize;
 
-pub struct Arena<T> {
+pub struct Tree<T> {
     nodes: Vec<Node<T>>
 }
 
@@ -37,9 +37,9 @@ impl<T> Node<T> {
     }
 }
 
-impl<T> Arena<T> {
-    pub fn new() -> Arena<T> {
-        Arena {
+impl<T> Tree<T> {
+    pub fn new() -> Tree<T> {
+        Tree {
             nodes: Vec::new()
         }
     }

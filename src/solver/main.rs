@@ -1,4 +1,5 @@
-#![feature(test)] #![feature(generators, generator_trait)]
+#![feature(test)]
+#![feature(generators, generator_trait)]
 #![feature(box_into_pin)]
 #![feature(box_syntax)]
 
@@ -7,11 +8,12 @@
 
 extern crate test;
 extern crate rayon;
+extern crate crossbeam;
 extern crate hashbrown;
 
 mod constants;
 mod state;
-mod arena;
+mod tree;
 mod nodes;
 mod action_abstraction;
 mod options;
@@ -21,15 +23,18 @@ mod infoset;
 mod cfr;
 
 use std::ops::{Generator, GeneratorState};
-use tree_builder::{TreeBuilder};
+use tree_builder::build_game_tree;
 use state::{BettingRound, PlayerState, GameState};
-use infoset::{Infoset, InfosetTable};
+use card_abstraction::{CardAbstraction, ISOMORPHIC};
+use infoset::{Infoset, create_infosets};
 use cfr::MCCFRTrainer;
-use rand::{thread_rng};
+use std::time::Instant;
 
 fn main() {
     let options = options::default_river();
     let mut trainer = MCCFRTrainer::init(options);
-    let mut rng = thread_rng();
-    trainer.train(&mut rng, 1000);
+    let start = Instant::now();
+    trainer.train(100_000_000);
+    let elapsed = start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+    println!("{}", elapsed);
 }
