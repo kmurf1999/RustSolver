@@ -38,7 +38,7 @@ impl Kmeans {
 
         let start = Instant::now();
 
-        println!("Initializing Kmeans++ with {} restarts", n_restarts);
+        println!("Initializing Kmeans with {} random restarts", n_restarts);
 
         // create n centers to choose from
         let mut center_c: Vec<Vec<&Histogram>> = Vec::with_capacity(n_restarts);
