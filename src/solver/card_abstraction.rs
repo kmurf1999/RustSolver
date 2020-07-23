@@ -2,26 +2,55 @@ use hashbrown::HashMap;
 use rust_poker::hand_indexer_s;
 use rust_poker::hand_range::HandRange;
 use rust_poker::equity_calculator::remove_invalid_combos;
-use crate::state::BettingRound;
 use rayon::prelude::*;
 use std::sync::mpsc::channel;
 use std::thread;
+use std::io::prelude::*;
+use std::fs::File;
+use std::io::SeekFrom;
+use std::io::BufReader;
+use combine::Parser;
+use combine::parser::byte::num::le_u32;
+use std::io::{Error, ErrorKind};
 
-/// Card abstraction interface for a single round
-pub struct ISOMORPHIC {
+use crate::state::BettingRound;
+
+fn read_file(file: &File, offset: u64) -> std::io::Result<u32> {
+    let mut reader = BufReader::with_capacity(4, file);
+    reader.seek(SeekFrom::Start(offset * 4))?;
+    let buffer = reader.fill_buf()?;
+    let result = le_u32().parse(buffer);
+    match result {
+        Ok((val, _)) => {
+            println!("{}", val);
+            return Ok(val);
+        },
+        Err(_) => {
+            return Err(Error::new(ErrorKind::Other, "Unexpected Parse"));
+        }
+    }
+}
+
+// /// Card abstraction interface for a single round
+// pub struct ISOMORPHIC {
+//     hand_indexer: hand_indexer_s,
+//     /// hand_index -> cluster_idx for each player
+//     cluster_map: Vec<HashMap<u64,usize>>,
+//     /// the number of clusters for each player
+//     size: Vec<usize>
+// }
+
+// pub struct EMD {
+
+// }
+
+pub struct OCHS {
     hand_indexer: hand_indexer_s,
     /// hand_index -> cluster_idx for each player
     cluster_map: Vec<HashMap<u64,usize>>,
     /// the number of clusters for each player
-    size: Vec<usize>
-}
-
-pub struct EMD {
-
-}
-
-pub struct OCHS {
-
+    size: Vec<usize>,
+    file: File,
 }
 
 pub trait CardAbstraction {
@@ -31,11 +60,13 @@ pub trait CardAbstraction {
     fn get_size(&self, player: u8) -> usize;
 }
 
-impl CardAbstraction for ISOMORPHIC {
+impl CardAbstraction for OCHS {
 
-    type AbsType = ISOMORPHIC;
+    type AbsType = OCHS;
 
     fn init(hand_ranges: &Vec<HandRange>, initial_board_mask: u64, round: BettingRound) -> Self::AbsType {
+
+        let file = File::open("ochs_abs.dat").unwrap();
 
         const N_THREADS: usize = 4;
         const CHANNEL_SIZE: usize = 10;
@@ -89,7 +120,8 @@ impl CardAbstraction for ISOMORPHIC {
                     match cards_left {
                         0 => {
                             let index = hand_indexer.get_index(&cards);
-                            tx.send(index).unwrap();
+                            let cluster = read_file(&file, index).unwrap();
+                            tx.send(cluster.into()).unwrap();
                         },
                         1 => {
                             let used_card_mask =
@@ -101,7 +133,8 @@ impl CardAbstraction for ISOMORPHIC {
                                 cards[5] = i;
 
                                 let index = hand_indexer.get_index(&cards);
-                                tx.send(index).unwrap();
+                                let cluster = read_file(&file, index).unwrap();
+                                tx.send(cluster.into()).unwrap();
                             }
                         },
                         2 => {
@@ -120,7 +153,8 @@ impl CardAbstraction for ISOMORPHIC {
                                     }
                                     cards[6] = j;
                                     let index = hand_indexer.get_index(&cards);
-                                    tx.send(index).unwrap();
+                                    let cluster = read_file(&file, index).unwrap();
+                                    tx.send(cluster.into()).unwrap();
                                 }
                             }
                         },
@@ -133,22 +167,27 @@ impl CardAbstraction for ISOMORPHIC {
             });
         }).unwrap();
 
-        ISOMORPHIC {
+        OCHS {
             hand_indexer: hand_indexer,
             cluster_map,
-            size
+            size,
+            file
         }
     }
+
     fn get_cluster(&self, cards: &[u8], player: u8) -> usize {
         let hand_index = self.hand_indexer.get_index(cards);
+        let cluster = read_file(&self.file, hand_index).unwrap();
         return *self.cluster_map[usize::from(player)]
-            .get(&hand_index)
+            .get(&cluster.into())
             .unwrap();
     }
+
     fn get_size(&self, player: u8) -> usize {
         return self.size[usize::from(player)];
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,26 +195,13 @@ mod tests {
     use crate::options;
     use std::time::{Duration, Instant};
 
-    #[bench]
-    fn bench_init_turn(b: &mut Bencher) {
-        // 4,418,307 ns/iter (+/- 152,791)
-        let round = BettingRound::Turn;
-        let flop_mask: u64 = 0b111;
-        let mut hand_ranges = HandRange::from_strings(["random".to_string(), "random".to_string()].to_vec());
-        remove_invalid_combos(&mut hand_ranges, flop_mask);
-        b.iter(|| {
-            let card_abs = ISOMORPHIC::init(&hand_ranges, flop_mask, round);
-            assert_eq!(card_abs.size[1], 12888);
-        });
-    }
-
     #[test]
     fn test_init_river() {
         let round = BettingRound::River;
-        let flop_mask: u64 = 0b11111;
+        let flop_mask: u64 = 0b1101101;
         let mut hand_ranges = HandRange::from_strings(["random".to_string(), "random".to_string()].to_vec());
         remove_invalid_combos(&mut hand_ranges, flop_mask);
-        let card_abs = ISOMORPHIC::init(&hand_ranges, flop_mask, round);
+        let card_abs = OCHS::init(&hand_ranges, flop_mask, round);
         assert_eq!(331, card_abs.size[0]);
         assert_eq!(331, card_abs.size[1]);
         // test some indexes

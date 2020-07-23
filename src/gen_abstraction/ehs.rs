@@ -7,13 +7,13 @@ use combine::Parser;
 use combine::parser::byte::num::le_f64;
 use std::io::{Error, ErrorKind};
 
-use hand_indexer::hand_index::hand_indexer_t;
+use rust_poker::hand_indexer_s;
 
 /**
  * structur to interface with EHS.dat table
  */
 pub struct EHS {
-    pub indexers: [hand_indexer_t; 4],
+    pub indexers: [hand_indexer_s; 4],
     // offsets for lookup table
     offsets: [u64; 4],
     file: File
@@ -27,10 +27,10 @@ impl EHS {
      */
     pub fn new() -> EHS {
         let indexers = [
-            hand_indexer_t::init(1, [ 2 ].to_vec()),
-            hand_indexer_t::init(2, [ 2, 3 ].to_vec()),
-            hand_indexer_t::init(2, [ 2, 4 ].to_vec()),
-            hand_indexer_t::init(2, [ 2, 5 ].to_vec()),
+            hand_indexer_s::init(1, [ 2 ].to_vec()),
+            hand_indexer_s::init(2, [ 2, 3 ].to_vec()),
+            hand_indexer_s::init(2, [ 2, 4 ].to_vec()),
+            hand_indexer_s::init(2, [ 2, 5 ].to_vec()),
         ];
         let mut offsets: [u64; 4] = [0; 4];
         for i in 1..4 {
@@ -56,10 +56,7 @@ impl EHS {
             5 => 1,
             6 => 2,
             7 => 3,
-            _ => {
-                println!("ERRROR");
-                1000
-            }
+            _ => panic!("ERRROR")
         };
 
         let index = self.indexers[i].get_index(cards);

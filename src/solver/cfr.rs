@@ -22,7 +22,7 @@ use crate::tree_builder::build_game_tree;
 use crate::infoset::{Infoset, InfosetTable, create_infosets};
 use crate::nodes::GameTreeNode;
 use crate::options::Options;
-use crate::card_abstraction::{CardAbstraction, ISOMORPHIC};
+use crate::card_abstraction::{CardAbstraction, OCHS};
 use crate::state::BettingRound;
 
 #[derive(Debug, Copy, Clone)]
@@ -97,7 +97,7 @@ fn generate_hand<R: Rng>(rng: &mut R, mut board_mask: u64, hand_ranges: &Vec<Han
 pub struct MCCFRTrainer {
     infosets: InfosetTable,
     game_tree: Tree<GameTreeNode>,
-    card_abs: ISOMORPHIC,
+    card_abs: OCHS,
     hand_ranges: Vec<HandRange>,
     initial_board_mask: u64,
 }
@@ -106,12 +106,13 @@ impl MCCFRTrainer {
     pub fn init(options: Options) -> Self {
 
         let mut hand_ranges = options.hand_ranges.to_owned();
+
         remove_invalid_combos(&mut hand_ranges, options.board_mask);
 
         let (n_actions, game_tree) = build_game_tree(&options);
 
         // River card abs
-        let card_abs = ISOMORPHIC::init(
+        let card_abs = OCHS::init(
             &options.hand_ranges,
             options.board_mask,
             BettingRound::River);
@@ -134,7 +135,7 @@ impl MCCFRTrainer {
         /// number of iterations before pruning
         const PRUNE_THRESHOLD: usize = 1_000_000;
         /// number of iterations between discounts
-        const DISCOUNT_INTERVAL: usize = 5000;
+        const DISCOUNT_INTERVAL: usize = 10_000;
         const N_THREADS: usize = 6;
 
         let thread_rng = thread_rng();
@@ -166,12 +167,11 @@ impl MCCFRTrainer {
 
 
                         let q: f64 = rng.gen();
-                        let mut utils = [0f64; 2];
                         for player in &[0u8, 1u8] {
                             if t.load() > PRUNE_THRESHOLD && q > 0.05 {
-                                a_self.mccfr(&mut rng, 0, *player, hand, 1f64, false);
+                                a_self.mccfr(&mut rng, 0, *player, hand, 1f64, 1f64, true);
                             } else {
-                                a_self.mccfr(&mut rng, 0, *player, hand, 1f64, false);
+                                a_self.mccfr(&mut rng, 0, *player, hand, 1f64, 1f64, false);
                             }
                         }
 
@@ -180,62 +180,69 @@ impl MCCFRTrainer {
                 });
             }
 
-            // loop {
-            //     let onems = time::Duration::from_millis(1);
-            //     thread::sleep(onems);
-            //     if t.load() & DISCOUNT_INTERVAL == 0 {
-            //         let d = (t.load() as f64 / DISCOUNT_INTERVAL as f64)
-            //             / ((t.load() as f64 / DISCOUNT_INTERVAL as f64) + 1.0);
-            //         for i in 0..self.infosets.len() {
-            //             for j in 0..self.infosets[i].len() {
-            //                 let n_actions = self.infosets[i][j].regrets.len();
-            //                 let infoset_mut = (&self.infosets[i][j] as *const Infoset) as *mut Infoset;
-            //                 for k in 0..n_actions {
-            //                     unsafe {
-            //                         (*infoset_mut).regrets[k] *= d;
-            //                         (*infoset_mut).strategy_sum[k] *= d;
+            // scope.spawn(move |_| {
+            //     while t.load() < iterations {
+            //         let onems = time::Duration::from_millis(1);
+            //         thread::sleep(onems);
+            //         if t.load() % DISCOUNT_INTERVAL == 0 {
+            //             let p = (t.load() / DISCOUNT_INTERVAL) as f64;
+            //             let d = p / (p + 1.0);
+            //             for i in 0..a_self.infosets.len() {
+            //                 for j in 0..a_self.infosets[i].len() {
+            //                     let n_actions = a_self.infosets[i][j].regrets.len();
+            //                     let infoset_mut = (&a_self.infosets[i][j] as *const Infoset) as *mut Infoset;
+            //                     for k in 0..n_actions {
+            //                         unsafe {
+            //                             (*infoset_mut).regrets[k] *= d;
+            //                             (*infoset_mut).strategy_sum[k] *= d;
+            //                         }
             //                     }
             //                 }
             //             }
+
             //         }
-
             //     }
-            // }
-
+            // });
         }).unwrap();
 
-        // let cards = [50u8, 49u8, 0, 1, 2, 3, 4];
-        // let cluster_idx = a_self.card_abs.get_cluster(&cards, 1);
-        // match &a_self.game_tree.get_node(1).data {
-        //     GameTreeNode::Action(an) => {
-        //         if an.index == 0 {
-        //             let s = a_self.infosets[an.index][cluster_idx].get_final_strategy();
-        //             for (i, action) in an.actions.iter().enumerate() {
-        //                 // println!("{} {}", action.to_string(), s[i]);
-        //                 println!("{} {}",
-        //                          action.to_string(),
-        //                          s[i]);
-        //             }
-        //         }
-        //     },
-        //     _ => {}
-        // }
+        let mut rng = SmallRng::from_rng(thread_rng).unwrap();
+        let mut cards = generate_hand(
+                &mut rng,
+                a_self.initial_board_mask,
+                &a_self.hand_ranges).hands[0];
+
+        match &a_self.game_tree.get_node(1).data {
+            GameTreeNode::Action(an) => {
+                for combo in &a_self.hand_ranges[usize::from(an.player)].hands {
+                    cards[0] = combo.0;
+                    cards[1] = combo.1;
+                    let cluster_idx = a_self.card_abs.get_cluster(&cards, an.player);
+                    let s = a_self.infosets[an.index][cluster_idx].get_final_strategy();
+                    print!("{} | ", combo.to_string());
+                    for (i, action) in an.actions.iter().enumerate() {
+                        print!("{} {:.3}, ", action.to_string(), (s[i] * 1000.0).round() / 1000.0);
+                    }
+                    println!("");
+                }
+            },
+            _ => {}
+        }
+
     }
     fn mccfr<R: Rng>(&self,
             rng: &mut R, node_id: NodeId,
-            player: u8, mut hand: TrainHand,
-            cfr_reach: f64, prune: bool) -> f64 {
+            player: u8, hand: TrainHand,
+            p: f64, op: f64, prune: bool) -> f64 {
 
-        const PRUNE_THRESHOLD: f64 = -100000.0;
         let node = self.game_tree.get_node(node_id);
         match &node.data {
             GameTreeNode::PublicChance => {
                 // progress to next node
-                return self.mccfr(rng, node.children[0], player, hand, cfr_reach, prune);
+                return self.mccfr(rng, node.children[0], player, hand, p, op, prune);
             },
             GameTreeNode::PrivateChance => {
                 // progress to next node
-                return self.mccfr(rng, node.children[0], player, hand, cfr_reach, prune);
+                return self.mccfr(rng, node.children[0], player, hand, p, op, prune);
             },
             GameTreeNode::Terminal(tn) => {
                 match tn.ttype {
@@ -278,6 +285,8 @@ impl MCCFRTrainer {
             },
             GameTreeNode::Action(an) => {
 
+                const PRUNE_THRESHOLD: f64 = -5000.0;
+
                 // get number of actions
                 let n_actions = an.actions.len();
 
@@ -297,7 +306,7 @@ impl MCCFRTrainer {
 
                                utils[i] = self.mccfr(
                                    rng, node.children[i],
-                                   player, hand, cfr_reach, prune);
+                                   player, hand, p * strategy[i], op, prune);
 
                                util += utils[i] * strategy[i];
                                explored[i] = true;
@@ -305,7 +314,7 @@ impl MCCFRTrainer {
                         } else {
                            utils[i] = self.mccfr(
                                rng, node.children[i],
-                               player, hand, cfr_reach, prune);
+                               player, hand, p * strategy[i], op, prune);
 
                            util += utils[i] * strategy[i];
                         }
@@ -314,8 +323,8 @@ impl MCCFRTrainer {
 
                     // board_mask: get_card_mask("Kh5h7sJd3h"),
                     // let cards = [
-                    //     4u8 * 11 + 0,
-                    //     4u8 * 4 + 1,
+                    //     4u8 * 9 + 0,
+                    //     4u8 * 12 + 1,
 
                     //     4 * 11 + 1,
                     //     4 * 3 + 1,
@@ -325,42 +334,37 @@ impl MCCFRTrainer {
                     // ];
 
                     // let c = self.card_abs.get_cluster(&cards, an.player);
-                    // if an.index == 1 && c == cluster_idx {
-
+                    // if an.index == 0 && c == cluster_idx {
                     //     for action in &an.actions {
                     //         print!("{} ", action.to_string());
                     //     }
                     //     println!("");
                     //     for i in 0..n_actions {
-                    //         print!("{} ", infoset.regrets[i]);
+                    //         print!("{} ", infoset.strategy_sum[i]);
                     //     }
+                    //     // println!("");
+                    //     // let s = infoset.get_final_strategy();
+                    //     // for i in 0..n_actions {
+                    //     //     print!("{} ", s[i]);
+                    //     // }
                     //     println!("");
-                    //     let s = infoset.get_final_strategy();
-                    //     for i in 0..n_actions {
-                    //         print!("{} ", s[i]);
-                    //     }
-                    //     println!("");
-                    //     // println!("{} {}",
-                    //     //          hand.hands[usize::from(an.player)][0],
-                    //     //          hand.hands[usize::from(an.player)][1]);
-                    //     // println!("regrets: {} {} {}", infoset.regrets[0], infoset.regrets[1], infoset.regrets[2]);
-                    //     // println!("strategy: {} {} {}", infoset.strategy_sum[0], infoset.strategy_sum[1], infoset.strategy_sum[2]);
-                    //     // println!("final strategy: {} {} {}", infoset.get_final_strategy()[0], infoset.get_final_strategy()[1], infoset.get_final_strategy()[2]);
+                    //     // println!("");
                     // }
+
                     // update regrets
                     let infoset_mut = (infoset as *const Infoset) as *mut Infoset;
                     for i in 0..n_actions {
                         if prune {
                             if explored[i] {
                                 unsafe {
-                                    (*infoset_mut).regrets[i] += cfr_reach * (utils[i] - util);
-                                    (*infoset_mut).strategy_sum[i] += cfr_reach * strategy[i];
+                                    (*infoset_mut).regrets[i] += utils[i] - util;
+                                    (*infoset_mut).strategy_sum[i] += (1.0 / op) * p * strategy[i];
                                 }
                             }
                         } else {
                             unsafe {
-                                (*infoset_mut).regrets[i] += cfr_reach * (utils[i] - util);
-                                (*infoset_mut).strategy_sum[i] += cfr_reach * strategy[i];
+                                (*infoset_mut).regrets[i] += utils[i] - util;
+                                (*infoset_mut).strategy_sum[i] += (1.0 / op) * p * strategy[i];
                             }
                         }
                     }
@@ -368,21 +372,20 @@ impl MCCFRTrainer {
                     return util;
                 } else {
                     // sample one action based on distribution
-                    // let dist = WeightedIndex::new(&strategy).unwrap();
-                    // let a_idx = dist.sample(rng);
-                    // let child_cfr_reach = strategy[a_idx] * cfr_reach;
-                    // return self.mccfr(
-                    //     rng, node.children[a_idx],
-                    //     player, hand, child_cfr_reach, prune);
-                    let mut utils = vec![0f64; n_actions];
-                    let mut util = 0f64;
-                    for i in 0..n_actions {
-                        utils[i] = self.mccfr(
-                            rng, node.children[i],
-                            player, hand, cfr_reach * strategy[i], prune);
-                        util += utils[i] * strategy[i];
-                    }
-                    return util;
+                    let dist = WeightedIndex::new(&strategy).unwrap();
+                    let a_idx = dist.sample(rng);
+                    // // let child_cfr_reach = strategy[a_idx] * cfr_reach;
+                    return self.mccfr(
+                        rng, node.children[a_idx],
+                        player, hand, p, op * strategy[a_idx], prune);
+                    // let mut utils = vec![0f64; n_actions];
+                    // let mut util = 0f64;
+                    // for i in 0..n_actions {
+                    //     util += self.mccfr(
+                    //         rng, node.children[i],
+                    //         player, hand, p, op * strategy[i], prune);
+                    // }
+                    // return util;
                 }
             }
         }

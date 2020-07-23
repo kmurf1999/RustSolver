@@ -1,12 +1,12 @@
 use crossbeam::sync::ShardedLock;
 use crate::tree::{Tree, NodeId};
-use crate::card_abstraction::{ISOMORPHIC, CardAbstraction};
+use crate::card_abstraction::{OCHS, CardAbstraction};
 use crate::nodes::GameTreeNode;
 
 // container for infosets
 pub type InfosetTable = Vec<Vec<Infoset>>;
 
-pub fn create_infosets(n_actions: usize, tree: &Tree<GameTreeNode>, card_abs: &ISOMORPHIC) -> InfosetTable {
+pub fn create_infosets(n_actions: usize, tree: &Tree<GameTreeNode>, card_abs: &OCHS) -> InfosetTable {
     let mut infosets: Vec<Vec<Infoset>> = Vec::new();
 
     for _ in 0..n_actions {
@@ -19,7 +19,7 @@ pub fn create_infosets(n_actions: usize, tree: &Tree<GameTreeNode>, card_abs: &I
 }
 
 fn create_infosets_rec(
-        card_abs: &ISOMORPHIC,
+        card_abs: &OCHS,
         tree: &Tree<GameTreeNode>,
         infosets: &mut InfosetTable,
         node: NodeId) {
@@ -34,13 +34,13 @@ fn create_infosets_rec(
                 create_infosets_rec(card_abs, tree, infosets, node.children[i]);
             }
         },
-        GameTreeNode::Terminal(tn) => {},
         GameTreeNode::PrivateChance => {
             create_infosets_rec(card_abs, tree, infosets, node.children[0]);
         },
         GameTreeNode::PublicChance => {
             create_infosets_rec(card_abs, tree, infosets, node.children[0]);
-        }
+        },
+        GameTreeNode::Terminal(_) => {},
     }
 }
     // /**

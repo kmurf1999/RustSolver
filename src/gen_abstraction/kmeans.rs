@@ -12,7 +12,7 @@ use std::cmp::Ordering;
 
 use crate::{Histogram};
 
-static EPSILON: f64 = 0.01;
+static EPSILON: f32 = 0.005;
 static N_THREADS: usize = 8;
 
 pub struct Kmeans {
@@ -32,7 +32,7 @@ impl Kmeans {
      */
     pub fn init_random<R: Rng>(
             n_restarts: usize, n_centers: usize, rng: &mut R,
-            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync),
+            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),
             dataset: &Vec<Histogram>) -> Kmeans {
 
         println!("Initializing Kmeans++ with {} restarts", n_restarts);
@@ -42,42 +42,21 @@ impl Kmeans {
         let n_data = dataset.len();
         // for picking first center
         let uniform_dist: Uniform<usize> = Uniform::from(0..n_data);
-        // uses min dists for weighting
-        // let mut weighted_dist: WeightedIndex<f64>;
-        let mut min_dists = vec![f64::MAX; n_data];
         // init centers randomly
         for i in 0..n_restarts {
-            // update progress
-            // print!("{}/{}\r", i, n_restarts);
-            // io::stdout().flush().unwrap();
-
             // random init
             center_c.push(Vec::with_capacity(n_centers));
-            for k in 0..n_centers {
+            for _ in 0..n_centers {
              center_c[i].push(&dataset[rng.sample(uniform_dist)]);
             }
-
-            // for k in 1..n_centers {
-            //     // update progress
-            //     // print!("restart: {}/{}, center: {}/{}\r", i, n_restarts, k, n_centers);
-            //     io::stdout().flush().unwrap();
-
-            //     // update min dists of datapoints from center
-            //     update_min_dists(dist_func, &mut min_dists,
-            //             dataset, &center_c[i][k-1]);
-
-            //     weighted_dist = WeightedIndex::new(&min_dists).unwrap();
-            //     // selected next center based on x^2 weighted dist
-            //     center_c[i].push(&dataset[rng.sample(weighted_dist)]);
-            // }
         }
 
         // calculate total dists of each restart
-        let mut cluster_dists: Vec<f64> = vec![0f64; n_restarts];
+        let mut cluster_dists: Vec<f32> = vec![0f32; n_restarts];
         cluster_dists.par_iter_mut().enumerate().for_each(|(r, cd)| {
-            let mut sum = 0f64;
+            let mut sum = 0f32;
             let mut count = 0usize;
-            let mut distances = vec![0f64; n_centers];
+            let mut distances = vec![0f32; n_centers];
             for i in 0..n_centers {
                 for j in 0..n_centers {
                     if j == i {
@@ -89,7 +68,7 @@ impl Kmeans {
                 }
                 sum += distances[i];
             }
-            *cd = sum / count as f64;
+            *cd = sum / count as f32;
         });
 
         // get max index
@@ -115,7 +94,7 @@ impl Kmeans {
     pub fn predict(&self,
             dataset: &Vec<Histogram>,
             clusters: &mut Vec<usize>,
-            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync)) -> usize {
+            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync)) -> usize {
 
         // number of means
         let n_centers = self.centers.len();
@@ -134,7 +113,7 @@ impl Kmeans {
                 scope.spawn(move |_| {
                     let mut curr_cluster: usize;
                     let mut min_cluster: usize;
-                    let mut variance: Vec<f64>;
+                    let mut variance: Vec<f32>;
                     for j in 0..slice.len() {
                         curr_cluster = slice[j];
                         variance = vec![0.0; n_centers];
@@ -167,7 +146,7 @@ impl Kmeans {
     }
 
     pub fn fit(&mut self, dataset: &Vec<Histogram>,
-            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync)
+            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync)
             ) -> Vec<usize> {
 
         // number of means
@@ -178,7 +157,7 @@ impl Kmeans {
         let n_bins: usize = dataset[0].len();
 
         let mut iteration: usize = 0;
-        let mut accuracy: f64;
+        let mut accuracy: f32;
 
         // which cluster each item in dataset is in
         let mut clusters: Vec<usize> = vec![0; n_data];
@@ -187,8 +166,8 @@ impl Kmeans {
 
             let changed = self.predict(dataset, &mut clusters, dist_func);
 
-            let mut cluster_elem_counter: Vec<f64> = vec![0.0; k];
-            let mut cluster_prob_mass: Vec<Vec<f64>> = vec![vec![0.0; n_bins]; k];
+            let mut cluster_elem_counter: Vec<f32> = vec![0.0; k];
+            let mut cluster_prob_mass: Vec<Vec<f32>> = vec![vec![0.0; n_bins]; k];
 
             for i in 0..n_data {
                 cluster_elem_counter[clusters[i]] += 1.0;
@@ -210,7 +189,7 @@ impl Kmeans {
             }
 
             // print progress to console
-            accuracy = changed as f64 / n_data as f64;
+            accuracy = changed as f32 / n_data as f32;
             print!("iteration {}, epsilon: {:.3}\r", iteration, accuracy);
             io::stdout().flush().unwrap();
             iteration += 1;
@@ -224,8 +203,8 @@ impl Kmeans {
 }
 
 pub fn update_min_dists(
-        dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync),
-        min_dists: &mut Vec<f64>,
+        dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),
+        min_dists: &mut Vec<f32>,
         dataset: &Vec<Histogram>,
         new_center: &Histogram) {
 
@@ -256,9 +235,9 @@ pub fn update_min_dists(
 /**
  * Computes the L2 norm distance between two histograms
  */
-pub fn l2_dist(a: &Histogram, b: &Histogram) -> f64 {
-    let mut sum = 0f64;
-    let mut p_sum: f64;
+pub fn l2_dist(a: &Histogram, b: &Histogram) -> f32 {
+    let mut sum = 0f32;
+    let mut p_sum: f32;
     for i in 0..a.len() {
         p_sum = a[i] - b[i];
         sum += p_sum * p_sum;

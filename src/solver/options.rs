@@ -54,8 +54,8 @@ pub fn default_river() -> Options {
 
         n_players: 2,
         stack_sizes: vec![500, 500],
-        board_mask: get_card_mask("Kh5h7sJd3h"),
-        starting_pot: 35,
+        board_mask: get_card_mask("AhKhTs9d9h"),
+        starting_pot: 500,
         all_in_threshold: 0.67,
         max_raises: 2,
 
@@ -66,7 +66,7 @@ pub fn default_river() -> Options {
 
         action_abstraction: ActionAbstraction {
             bet_sizes: vec![
-                vec![0.5, 1.0]
+                vec![1.0],
             ],
             raise_sizes: vec![
                 vec![3.0],

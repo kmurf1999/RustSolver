@@ -1,7 +1,6 @@
 extern crate rust_poker;
 // extern crate rayon;
 extern crate bytepack;
-extern crate memmap;
 extern crate crossbeam;
 
 use std::io::Write; // <--- ring flush() into scope
@@ -10,9 +9,10 @@ use bytepack::{ LEPacker };
 use std::time::{ Instant };
 use std::fs::OpenOptions;
 
-use rust_poker::equity_calc::EquityCalc;
-use rust_poker::card_range::{ Combo, CardRange, RANKS, SUITS };
-use rust_solver::hand_index::hand_indexer_t;
+use rust_poker::equity_calculator::calc_equity;
+use rust_poker::hand_range::{ HandRange, HoleCards};
+use rust_poker::constants::{RANK_TO_CHAR, SUIT_TO_CHAR};
+use rust_poker::hand_indexer_s;
 
 const N_THREADS: u64 = 8;
 
@@ -21,12 +21,12 @@ fn main() {
 
     // create preflop indexer
     let indexers = [
-        hand_indexer_t::init(1, [ 2 ].to_vec()),
-        hand_indexer_t::init(2, [ 2, 3 ].to_vec()),
-        hand_indexer_t::init(2, [ 2, 4 ].to_vec()),
-        hand_indexer_t::init(2, [ 2, 5 ].to_vec()),
+        hand_indexer_s::init(1, [ 2 ].to_vec()),
+        hand_indexer_s::init(2, [ 2, 3 ].to_vec()),
+        hand_indexer_s::init(2, [ 2, 4 ].to_vec()),
+        hand_indexer_s::init(2, [ 2, 5 ].to_vec()),
     ];
-    // let indexer = hand_indexer_t::init(4, [ 2, 3, 1, 1 ].to_vec());
+    // let indexer = hand_indexer_s::init(4, [ 2, 3, 1, 1 ].to_vec());
 
     // let mut file = File::create("ehs.dat").unwrap();
     let mut file = OpenOptions::new().write(true).create_new(true).open("ehs.dat").unwrap();
@@ -46,8 +46,8 @@ fn main() {
             for (j, slice) in equity_table.chunks_mut(size_per_thread as usize).enumerate() {
                 scope.spawn(move |_| {
                     let mut board_mask: u64;
-                    let mut combo: Combo;
-                    let mut hand_ranges: Vec<CardRange>;
+                    let mut combo: HoleCards;
+                    let mut hand_ranges: Vec<HandRange>;
                     let mut cards: Vec<u8> = vec![0; cards_per_round[i]];
                     for k in 0..slice.len() {
 
@@ -58,25 +58,25 @@ fn main() {
                         }
 
                         indexers[i].get_hand(round, ((j as u64) * size_per_thread) + (k as u64), cards.as_mut_slice());
-                        combo = Combo(cards[0], cards[1]);
+                        combo = HoleCards(cards[0], cards[1]);
 
                         // create board
                         board_mask = 0;
                         let mut board_str = String::new();
                         for n in 2..cards_per_round[i as usize] {
                             board_mask |= 1u64 << cards[n];
-                            board_str.push(RANKS[(cards[n] >> 2) as usize]);
-                            board_str.push(SUITS[(cards[n] & 3) as usize]);
+                            board_str.push(RANK_TO_CHAR[(cards[n] >> 2) as usize]);
+                            board_str.push(SUIT_TO_CHAR[(cards[n] & 3) as usize]);
                         }
 
-                        hand_ranges = CardRange::from_str_arr([combo.to_string(), "random".to_string()].to_vec());
+                        hand_ranges = HandRange::from_strings([combo.to_string(), "random".to_string()].to_vec());
 
                         // run sim
                         if i == 0 {
-                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 1, 100000)[0];
+                            slice[k] = calc_equity(&mut hand_ranges, board_mask, 1, 100000)[0];
                         } else {
                             // small sample count and more cores
-                            slice[k] = EquityCalc::start(&mut hand_ranges, board_mask, 2, 10000)[0];
+                            slice[k] = calc_equity(&mut hand_ranges, board_mask, 2, 10000)[0];
                         }
                     }
                 });
