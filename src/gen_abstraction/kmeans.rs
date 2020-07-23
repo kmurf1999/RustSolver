@@ -3,6 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use std::sync::Arc;
 use std::io::Write;
 use std::io;
+use std::time::{ Instant };
 
 use rand::distributions::{WeightedIndex, Uniform};
 
@@ -35,6 +36,8 @@ impl Kmeans {
             dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),
             dataset: &Vec<Histogram>) -> Kmeans {
 
+        let start = Instant::now();
+
         println!("Initializing Kmeans++ with {} restarts", n_restarts);
 
         // create n centers to choose from
@@ -52,8 +55,14 @@ impl Kmeans {
         }
 
         // calculate total dists of each restart
+        let iteration = AtomicCell::now(0usize);
         let mut cluster_dists: Vec<f32> = vec![0f32; n_restarts];
         cluster_dists.par_iter_mut().enumerate().for_each(|(r, cd)| {
+
+            let cur_iter = iteration.fetch_add(1);
+            print!("Calculating distances {}/{}\r", cur_iter, n_restarts);
+            io::stdout().flush().unwrap();
+            
             let mut sum = 0f32;
             let mut count = 0usize;
             let mut distances = vec![0f32; n_centers];
@@ -79,6 +88,8 @@ impl Kmeans {
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
             .map(|(i, _)| i)
             .unwrap();
+
+        println!("Done.  Took {}ms", start.elapsed().as_millis());
 
         // clone center to return
         Kmeans {
@@ -145,9 +156,12 @@ impl Kmeans {
         return changed.load();
     }
 
+    /// Fits kmeans to dataset with dist function
     pub fn fit(&mut self, dataset: &Vec<Histogram>,
             dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync)
             ) -> Vec<usize> {
+
+        let start = Instant::now();
 
         // number of means
         let k = self.centers.len();
@@ -198,10 +212,13 @@ impl Kmeans {
             }
         }
 
+        println!("Done.  Took: {}ms", start.elapsed().as_millis());
+
         return clusters;
     }
 }
 
+// used for kmeans ++
 pub fn update_min_dists(
         dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),
         min_dists: &mut Vec<f32>,
@@ -218,23 +235,7 @@ pub fn update_min_dists(
     }
 }
 
-/**
- * Updates the clusters for a dataset based on a given distance function
- * returns the number of elements that have changed
- *
- * k: number of clusters
- * dataset: mutabe reference to list of data to cluster
- * dist_func: distance function to compare histograms
- * center: k-centers
- */
-
-/**
- * performs kmeans a on initialized centers using a specified distance function
- */
-
-/**
- * Computes the L2 norm distance between two histograms
- */
+/// Computes the L2 norm distance between two histograms
 pub fn l2_dist(a: &Histogram, b: &Histogram) -> f32 {
     let mut sum = 0f32;
     let mut p_sum: f32;

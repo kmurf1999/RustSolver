@@ -26,7 +26,6 @@ fn main() {
         hand_indexer_s::init(2, [ 2, 4 ].to_vec()),
         hand_indexer_s::init(2, [ 2, 5 ].to_vec()),
     ];
-    // let indexer = hand_indexer_s::init(4, [ 2, 3, 1, 1 ].to_vec());
 
     // let mut file = File::create("ehs.dat").unwrap();
     let mut file = OpenOptions::new().write(true).create_new(true).open("ehs.dat").unwrap();
