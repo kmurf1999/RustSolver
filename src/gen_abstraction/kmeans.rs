@@ -55,7 +55,7 @@ impl Kmeans {
         }
 
         // calculate total dists of each restart
-        let iteration = AtomicCell::now(0usize);
+        let iteration = AtomicCell::new(0usize);
         let mut cluster_dists: Vec<f32> = vec![0f32; n_restarts];
         cluster_dists.par_iter_mut().enumerate().for_each(|(r, cd)| {
 
