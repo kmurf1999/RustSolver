@@ -81,9 +81,11 @@ fn get_bin(value: f32, bins: usize) -> usize {
 fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogram> {
 
     let mut thread_rng = thread_rng();
+
     let start_time = Instant::now();
+
     let ehs_table = EHS::new();
-    
+
     let samples_f = samples as f32;
 
     let card_dist: Uniform<u8> = Uniform::from(0..52);
@@ -212,9 +214,8 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
     return opp_ranges.iter().map(|(s, _)| s.clone()).collect();
 }
 
-fn gen_ochs() {
+fn gen_ochs(round: u8) {
     let mut rng = thread_rng();
-    let round: u8 = 3; // river
     let n_opp_clusters = 8;
     let ehs_table = EHS::new();
     let round_size = ehs_table.indexers[usize::from(round)].size(1);
@@ -269,8 +270,12 @@ fn gen_ochs() {
     });
 
 
-    let train_data = histograms.choose_multiple(&mut rng, round_size as usize / 5)
-        .cloned().collect();
+    // use 20% of data for testing
+    let train_data = histograms
+        .choose_multiple(&mut rng, round_size as usize / 5)
+        .cloned()
+        .collect();
+
     let n_restarts = 50;
     let n_clusters = 5000;
     let mut clusters: Vec<usize> = vec![0; histograms.len()];
@@ -284,16 +289,14 @@ fn gen_ochs() {
     estimator.fit(&train_data, &kmeans::l2_dist);
     estimator.predict(&histograms, &mut clusters, &kmeans::l2_dist);
 
-    let mut file = OpenOptions::new().write(true).create_new(true).open("ochs_abs.dat").unwrap();
+    let mut file = OpenOptions::new().write(true).create_new(true).open("round_{}_ochs.dat").unwrap();
     for i in 0..round_size {
         file.pack(clusters[i as usize] as u32).unwrap();
     }
-    // file.pack_all(&clusters[..]).unwrap();
 }
 
-fn main() {
+fn gen_emd(round: u8) {
     let mut rng = thread_rng();
-    let round: u8 = 1; // flop
 
     let hand_indexer = match round {
         0 => hand_indexer_s::init(1, vec![2]),
@@ -309,19 +312,34 @@ fn main() {
     let n_restarts: usize = 100;
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
-    let mut features = generate_histograms(n_samples, round.into(), n_bins);
+    let features = generate_histograms(n_samples, round.into(), n_bins);
+
+    // use 30% of the data for training
+    let train_data: Vec<Histogram> = features
+        .choose_multiple(&mut rng, round_size / 3)
+        .cloned()
+        .collect();
+
+    println!("Train data: {} {} {}", train_data[0].len(), train_data[1].len(), train_data[2].len());
+
+    let mut clusters = vec![0usize; round_size];
 
     let mut estimator = kmeans::Kmeans::init_random(
         n_restarts, n_clusters,
-        &mut rng, &emd::emd_1d, &features);
+        &mut rng, &emd::emd_1d, &train_data);
 
+    estimator.fit(&train_data, &emd::emd_1d);
 
-    let clusters = estimator.fit(&mut features, &emd::emd_1d);
+    estimator.predict(&features, &mut clusters, &emd::emd_1d);
 
     let mut file = OpenOptions::new().write(true).create_new(true).open(format!("round_{}_emd.dat", round)).unwrap();
     for i in 0..round_size {
         file.pack(clusters[i as usize] as u32).unwrap();
     }
+}
+
+fn main() {
+    gen_emd(1); // flop
 }
 
 #[cfg(test)]
