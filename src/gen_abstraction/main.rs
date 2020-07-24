@@ -215,10 +215,16 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 }
 
 fn gen_ochs(round: u8) {
+
+    if round < 1 || round > 3 {
+        panic!("Invalid round");
+    }
+
     let mut rng = thread_rng();
-    let n_opp_clusters = 8;
     let ehs_table = EHS::new();
-    let round_size = ehs_table.indexers[usize::from(round)].size(1);
+    let n_opp_clusters: usize = 8;
+    let round_size = ehs_table.indexers[usize::from(round)]
+        .size(1);
     let total_cards: usize = match round {
         0 => 2,
         1 => 5,
@@ -229,15 +235,17 @@ fn gen_ochs(round: u8) {
 
 
     println!("Generating OCHS ranges");
+
     let ohcs_ranges = generate_opponent_clusters(n_opp_clusters);
     for i in 0..ohcs_ranges.len() {
         println!("{}", ohcs_ranges[i]);
     }
 
     println!("Generating {} histograms for round {}", round_size, round);
-    let mut histograms = vec![vec![0f32; 8]; round_size as usize];
+
+    let mut features = vec![vec![0f32; n_opp_clusters]; round_size as usize];
     let acc = AtomicCell::new(0usize);
-    histograms.par_iter_mut().enumerate().for_each(|(i, hist)| {
+    features.par_iter_mut().enumerate().for_each(|(i, hist)| {
 
         let iteration = acc.fetch_add(1);
         if iteration % 1000 == 0 {
@@ -269,16 +277,16 @@ fn gen_ochs(round: u8) {
         }
     });
 
-
-    // use 20% of data for testing
-    let train_data = histograms
+    // only use 20% of data for training
+    let train_data: Vec<Histogram> = features
         .choose_multiple(&mut rng, round_size as usize / 5)
         .cloned()
         .collect();
 
     let n_restarts = 50;
     let n_clusters = 5000;
-    let mut clusters: Vec<usize> = vec![0; histograms.len()];
+
+    let mut clusters: Vec<usize> = vec![0; round_size as usize];
 
     // initialize kmeans
     let mut estimator = kmeans::Kmeans::init_random(
@@ -287,7 +295,8 @@ fn gen_ochs(round: u8) {
 
     // train kmeans
     estimator.fit(&train_data, &kmeans::l2_dist);
-    estimator.predict(&histograms, &mut clusters, &kmeans::l2_dist);
+
+    estimator.predict(&features, &mut clusters, &kmeans::l2_dist);
 
     let mut file = OpenOptions::new().write(true).create_new(true).open("round_{}_ochs.dat").unwrap();
     for i in 0..round_size {
@@ -316,13 +325,13 @@ fn gen_emd(round: u8) {
 
     // use 30% of the data for training
     let train_data: Vec<Histogram> = features
-        .choose_multiple(&mut rng, round_size / 3)
+        .choose_multiple(&mut rng, round_size as usize / 3)
         .cloned()
         .collect();
 
-    println!("Train data: {} {} {}", train_data[0].len(), train_data[1].len(), train_data[2].len());
+    println!("Train data | samples: {}, bin count: {}", train_data.len(), train_data[0].len());
 
-    let mut clusters = vec![0usize; round_size];
+    let mut clusters = vec![0usize; round_size as usize];
 
     let mut estimator = kmeans::Kmeans::init_random(
         n_restarts, n_clusters,
@@ -339,7 +348,9 @@ fn gen_emd(round: u8) {
 }
 
 fn main() {
-    gen_emd(1); // flop
+    // gen_emd(1); // flop
+    // gen_emd(2); // turn
+    gen_ochs(3); // river
 }
 
 #[cfg(test)]

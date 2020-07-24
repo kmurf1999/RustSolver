@@ -14,7 +14,6 @@ use std::cmp::Ordering;
 use crate::{Histogram};
 
 static EPSILON: f32 = 0.005;
-static N_THREADS: usize = 8;
 
 pub struct Kmeans {
     centers: Vec<Histogram>
@@ -60,9 +59,9 @@ impl Kmeans {
         cluster_dists.par_iter_mut().enumerate().for_each(|(r, cd)| {
 
             let cur_iter = iteration.fetch_add(1);
-            print!("Calculating distances {}/{}\r", cur_iter, n_restarts);
+            print!("Restart: {}/{}\r", cur_iter, n_restarts);
             io::stdout().flush().unwrap();
-            
+
             let mut sum = 0f32;
             let mut count = 0usize;
             let mut distances = vec![0f32; n_centers];
@@ -107,51 +106,40 @@ impl Kmeans {
             clusters: &mut Vec<usize>,
             dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync)) -> usize {
 
+        if clusters.len() != dataset.len() {
+            panic!("Cluster and dataset does not match");
+        }
+
         // number of means
         let n_centers = self.centers.len();
-        // length of data
-        let n_data = dataset.len();
+
         // number of clusters that have changed
         let changed = Arc::new(AtomicCell::new(0usize));
-        // let centers = Arc::new(self.centers);
 
-        let size_per_thread = n_data / N_THREADS;
-
-        crossbeam::scope(|scope| {
-            for (i, slice) in clusters.chunks_mut(size_per_thread).enumerate() {
-                // let center = Arc::clone(&center);
-                let changed = Arc::clone(&changed);
-                scope.spawn(move |_| {
-                    let mut curr_cluster: usize;
-                    let mut min_cluster: usize;
-                    let mut variance: Vec<f32>;
-                    for j in 0..slice.len() {
-                        curr_cluster = slice[j];
-                        variance = vec![0.0; n_centers];
-
-                        for k in 0..n_centers {
-                            variance[k] = dist_func(
-                                &dataset[(i * size_per_thread) + j],
-                                &self.centers[k]);
-                        }
-
-                        // get index of closest mean
-                        min_cluster = variance
-                            .iter()
-                            .enumerate()
-                            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                            .map(|(i, _)| i)
-                            .unwrap();
-
-                        if min_cluster != curr_cluster {
-                            changed.fetch_add(1);
-                        }
-
-                        slice[j] = min_cluster;
-                    }
-                });
+        clusters.par_iter_mut().enumerate().for_each(|(i, cluster)| {
+            let changed = Arc::clone(&changed);
+            let curr_cluster = *cluster;
+            let mut variance = vec![0.0; n_centers];
+            for k in 0..n_centers {
+                variance[k] = dist_func(
+                    &dataset[i],
+                    &self.centers[k]);
             }
-        }).unwrap();
+
+            let min_cluster = variance
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                .map(|(i, _)| i)
+                .unwrap();
+
+            if min_cluster != curr_cluster {
+                changed.fetch_add(1);
+            }
+
+            *cluster = min_cluster;
+
+        });
 
         return changed.load();
     }
@@ -172,6 +160,8 @@ impl Kmeans {
 
         let mut iteration: usize = 0;
         let mut accuracy: f32;
+
+        println!("Fitting {} centers to dataset", k);
 
         // which cluster each item in dataset is in
         let mut clusters: Vec<usize> = vec![0; n_data];
@@ -204,7 +194,7 @@ impl Kmeans {
 
             // print progress to console
             accuracy = changed as f32 / n_data as f32;
-            print!("iteration {}, epsilon: {:.3}\r", iteration, accuracy);
+            print!("Iteration: {}, epsilon: {:.3}\r", iteration, accuracy);
             io::stdout().flush().unwrap();
             iteration += 1;
             if (accuracy) <= EPSILON {
