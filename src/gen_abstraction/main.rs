@@ -40,7 +40,7 @@ use kmeans::Kmeans;
 
 use ehs::EHS;
 
-const N_THREADS: usize = 8;
+const N_THREADS: usize = 16;
 
 pub type Histogram = Vec<f32>;
 
@@ -179,7 +179,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 
     println!("Running Kmeans");
 
-    let opp_clusters = estimator.fit(&mut opp_features, &emd::emd_1d);
+    let opp_clusters = estimator.fit(&mut opp_features, &emd::emd_1d, 0.001);
 
     // transform clusters into range string representation
     for i in 0..169 {
@@ -214,7 +214,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
     return opp_ranges.iter().map(|(s, _)| s.clone()).collect();
 }
 
-fn gen_ochs(round: u8) {
+fn gen_ochs(round: u8, n_clusters: usize) {
 
     if round < 1 || round > 3 {
         panic!("Invalid round");
@@ -284,7 +284,7 @@ fn gen_ochs(round: u8) {
         .collect();
 
     let n_restarts = 50;
-    let n_clusters = 5000;
+    // let n_clusters = 5000;
 
     let mut clusters: Vec<usize> = vec![0; round_size as usize];
 
@@ -294,9 +294,14 @@ fn gen_ochs(round: u8) {
         &mut rng, &kmeans::l2_dist, &train_data);
 
     // train kmeans
-    estimator.fit(&train_data, &kmeans::l2_dist);
+    estimator.fit(&train_data, &kmeans::l2_dist, 0.01);
 
     estimator.predict(&features, &mut clusters, &kmeans::l2_dist);
+
+    println!("Clusters 0..5: {} {} {} {} {}",
+             clusters[0], clusters[1],
+             clusters[2], clusters[3],
+             clusters[4]);
 
     let mut file = OpenOptions::new().write(true).create_new(true).open("round_{}_ochs.dat").unwrap();
     for i in 0..round_size {
@@ -304,7 +309,20 @@ fn gen_ochs(round: u8) {
     }
 }
 
-fn gen_emd(round: u8) {
+/// generates emd abstraction and saves to file
+///
+/// # Arguments
+///
+/// * `round` round to make abstraction for 1: flop, 3: river
+/// * `n_samples` number of samples per histogram
+/// * `n_bins` number of bins in histogram
+///
+fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
+
+    if round < 1 || round > 3 {
+        panic!("invalid round");
+    }
+
     let mut rng = thread_rng();
 
     let hand_indexer = match round {
@@ -315,9 +333,9 @@ fn gen_emd(round: u8) {
         _ => panic!("Invalid round!")
     };
 
-    let n_samples = 2000usize;
-    let n_bins = 30usize;
-    let n_clusters = 5000usize;
+    // let n_samples = 2000usize;
+    // let n_bins = 30usize;
+    // let n_clusters = 5000usize;
     let n_restarts: usize = 100;
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
@@ -337,9 +355,14 @@ fn gen_emd(round: u8) {
         n_restarts, n_clusters,
         &mut rng, &emd::emd_1d, &train_data);
 
-    estimator.fit(&train_data, &emd::emd_1d);
+    estimator.fit(&train_data, &emd::emd_1d, 0.01);
 
     estimator.predict(&features, &mut clusters, &emd::emd_1d);
+
+    println!("Clusters 0..5: {} {} {} {} {}",
+             clusters[0], clusters[1],
+             clusters[2], clusters[3],
+             clusters[4]);
 
     let mut file = OpenOptions::new().write(true).create_new(true).open(format!("round_{}_emd.dat", round)).unwrap();
     for i in 0..round_size {
@@ -348,9 +371,11 @@ fn gen_emd(round: u8) {
 }
 
 fn main() {
-    gen_emd(1); // flop
-    // gen_emd(2); // turn
-    // gen_ochs(3); // river
+    // round, n means, n samples, 40 bins
+    gen_emd(1, 5000, 5000, 40); // flop
+    gen_emd(2, 5000, 2500, 30); // turn
+    // round, n means
+    gen_ochs(3, 5000); // river
 }
 
 #[cfg(test)]

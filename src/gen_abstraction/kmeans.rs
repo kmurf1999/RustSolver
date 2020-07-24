@@ -13,7 +13,7 @@ use std::cmp::Ordering;
 
 use crate::{Histogram};
 
-static EPSILON: f32 = 0.01;
+// static EPSILON: f32 = 0.01;
 
 pub struct Kmeans {
     centers: Vec<Histogram>
@@ -146,8 +146,8 @@ impl Kmeans {
 
     /// Fits kmeans to dataset with dist function
     pub fn fit(&mut self, dataset: &Vec<Histogram>,
-            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync)
-            ) -> Vec<usize> {
+            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f32 + Sync),
+            precision: f32) -> Vec<usize> {
 
         let start = Instant::now();
 
@@ -197,7 +197,7 @@ impl Kmeans {
             print!("Iteration: {}, epsilon: {:.3}\r", iteration, accuracy);
             io::stdout().flush().unwrap();
             iteration += 1;
-            if (accuracy) <= EPSILON {
+            if (accuracy) <= precision {
                 break;
             }
         }
