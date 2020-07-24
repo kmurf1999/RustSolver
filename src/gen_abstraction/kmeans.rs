@@ -13,7 +13,7 @@ use std::cmp::Ordering;
 
 use crate::{Histogram};
 
-static EPSILON: f32 = 0.005;
+static EPSILON: f32 = 0.01;
 
 pub struct Kmeans {
     centers: Vec<Histogram>

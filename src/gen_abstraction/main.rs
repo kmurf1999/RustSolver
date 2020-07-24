@@ -315,7 +315,7 @@ fn gen_emd(round: u8) {
         _ => panic!("Invalid round!")
     };
 
-    let n_samples = 1000usize;
+    let n_samples = 2000usize;
     let n_bins = 30usize;
     let n_clusters = 5000usize;
     let n_restarts: usize = 100;
@@ -323,9 +323,9 @@ fn gen_emd(round: u8) {
 
     let features = generate_histograms(n_samples, round.into(), n_bins);
 
-    // use 30% of the data for training
+    // use 25% of the data for training
     let train_data: Vec<Histogram> = features
-        .choose_multiple(&mut rng, round_size as usize / 3)
+        .choose_multiple(&mut rng, round_size as usize / 4)
         .cloned()
         .collect();
 
@@ -348,9 +348,9 @@ fn gen_emd(round: u8) {
 }
 
 fn main() {
-    // gen_emd(1); // flop
+    gen_emd(1); // flop
     // gen_emd(2); // turn
-    gen_ochs(3); // river
+    // gen_ochs(3); // river
 }
 
 #[cfg(test)]
