@@ -1,6 +1,7 @@
 use crate::action_abstraction::Action;
 use crate::state::BettingRound;
 
+#[derive(Debug)]
 pub struct ActionNode {
     pub actions: Vec<Action>,
     pub index: usize,
@@ -12,11 +13,13 @@ pub struct ActionNode {
  * to be evaluated by cfr function
  * type: ALLIN, UNCONTESTED, SHOWDOWN
  */
+#[derive(Debug)]
 pub enum TerminalType {
     ALLIN,
     SHOWDOWN,
     UNCONTESTED
 }
+
 impl TerminalType {
     pub fn to_string(&self) -> String {
         return match self {
@@ -27,6 +30,7 @@ impl TerminalType {
     }
 }
 
+#[derive(Debug)]
 pub struct TerminalNode {
     pub value: u32, // size of pot
     pub ttype: TerminalType,
@@ -34,9 +38,15 @@ pub struct TerminalNode {
     pub round: BettingRound
 }
 
+#[derive(Debug)]
+pub struct PublicChanceNode {
+    pub round: BettingRound
+}
+
+#[derive(Debug)]
 pub enum GameTreeNode {
     Action(ActionNode),
     Terminal(TerminalNode),
+    PublicChance(PublicChanceNode),
     PrivateChance,
-    PublicChance,
 }

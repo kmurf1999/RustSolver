@@ -49,27 +49,31 @@ impl Options {
     }
 }
 
-pub fn default_river() -> Options {
+pub fn default_flop() -> Options {
     Options {
 
         n_players: 2,
         stack_sizes: vec![500, 500],
-        board_mask: get_card_mask("AhKhTs9d9h"),
-        starting_pot: 500,
+        board_mask: get_card_mask("4d5dAs3cKs"),
+        starting_pot: 35,
         all_in_threshold: 0.67,
         max_raises: 2,
 
         hand_ranges: vec![
             HandRange::from_string("random".to_string()),
-            HandRange::from_string("random".to_string())
+            HandRange::from_string("random".to_string()),
         ],
 
         action_abstraction: ActionAbstraction {
             bet_sizes: vec![
-                vec![1.0],
+                // vec![0.5, 1.0],
+                vec![0.5, 1.0],
+                // vec![0.5, 1.0, 2.0],
             ],
             raise_sizes: vec![
+                // vec![3.0],
                 vec![3.0],
+                // vec![3.0],
             ]
         },
 

@@ -38,7 +38,7 @@ impl<'a> TreeBuilder<'a>{
                 println!("{}Private Chance", spaces);
                 self.print_node(n.children[0], depth + 1);
             },
-            GameTreeNode::PublicChance => {
+            GameTreeNode::PublicChance(_) => {
                 println!("{}Public Chance", spaces);
                 self.print_node(n.children[0], depth + 1);
             },
@@ -79,7 +79,7 @@ impl<'a> TreeBuilder<'a>{
 
         match &self.tree.get_node(node_id).data {
             GameTreeNode::Action(_) => {
-                for action in state.valid_actions(&self.options.action_abstraction) {
+                for action in state.valid_actions(&self.options.action_abstraction, round_idx.into()) {
                     self.build_action(node_id, round_idx, state, action);
                 }
             },
@@ -134,7 +134,9 @@ impl<'a> TreeBuilder<'a>{
     fn build_public_chance(&mut self, parent: NodeId, round_idx: u8, state: GameState) -> NodeId {
         let node = self.tree.create_node(
             Some(parent),
-            GameTreeNode::PublicChance);
+            GameTreeNode::PublicChance(PublicChanceNode {
+                round: state.round
+            }));
         let child = self.build_action_nodes(node, round_idx + 1, state);
         self.tree.get_node_mut(node).add_child(child);
         return node;

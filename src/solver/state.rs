@@ -121,17 +121,9 @@ impl GameState {
         }
         return new_state;
     }
-    pub fn valid_actions(&self, action_abs: &ActionAbstraction) -> Vec<Action> {
+    pub fn valid_actions(&self, action_abs: &ActionAbstraction, round_idx: usize) -> Vec<Action> {
         let mut actions: Vec<Action> = Vec::new();
-
-        // TODO 
-        let round = match action_abs.bet_sizes.len() {
-            1 => self.round.to_usize() - 2,
-            2 => self.round.to_usize() - 1,
-            3 => self.round.to_usize(),
-            _ => panic!("")
-        };
-
+        
         if self.other_player().wager == 0 {
             actions.push(Action::Check);
         }
@@ -142,7 +134,7 @@ impl GameState {
             actions.push(Action::Fold);
         }
         if self.other_player().wager == 0 {
-            for bet_size in &action_abs.bet_sizes[round] {
+            for bet_size in &action_abs.bet_sizes[round_idx] {
                 let chips = bet_size * self.pot as f64;
                 actions.push(Action::Bet(*bet_size));
                 if chips > (ALLIN_THRESHOLD * self.current_player().stack as f64) {
@@ -151,7 +143,7 @@ impl GameState {
             }
         }
         if self.raise_count < MAX_RAISES && !self.is_allin() && self.other_player().wager > self.current_player().wager {
-            for raise_size in &action_abs.raise_sizes[round] {
+            for raise_size in &action_abs.raise_sizes[round_idx] {
                 let chips = raise_size * self.other_player().wager as f64;
                 actions.push(Action::Raise(*raise_size));
                 if chips > (ALLIN_THRESHOLD * self.current_player().stack as f64) {
@@ -201,10 +193,10 @@ impl GameState {
                 new_state.bets_settled = true;
             },
             Action::Check => {
-                new_state.current = 1 - new_state.current;
                 if usize::from(new_state.current) == MAX_PLAYERS - 1 {
                     new_state.bets_settled = true;
                 }
+                new_state.current = 1 - new_state.current;
             },
             Action::Fold => {
                 new_state.current_player_mut().has_folded = true;

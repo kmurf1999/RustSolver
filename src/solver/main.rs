@@ -10,6 +10,7 @@ extern crate test;
 extern crate rayon;
 extern crate crossbeam;
 extern crate hashbrown;
+extern crate cortex_m;
 
 mod constants;
 mod state;
@@ -26,10 +27,10 @@ use cfr::MCCFRTrainer;
 use std::time::Instant;
 
 fn main() {
-    let options = options::default_river();
+    let options = options::default_flop();
     let mut trainer = MCCFRTrainer::init(options);
     let start = Instant::now();
-    trainer.train(50_000_000);
+    trainer.train(10_000_000);
     let elapsed = start.elapsed().subsec_nanos();
     println!("{}", elapsed);
 }

@@ -40,9 +40,9 @@ use kmeans::Kmeans;
 
 use ehs::EHS;
 
-const N_THREADS: usize = 16;
+const N_THREADS: usize = 8;
 
-pub type Histogram = Vec<f32>;
+pub type Histogram = Vec<f64>;
 
 /**
  * Create histograms for each combo
@@ -57,10 +57,10 @@ pub type Histogram = Vec<f32>;
  * @param bins: number of bins in histogram
  * @param value: the probability
  */
-fn get_bin(value: f32, bins: usize) -> usize {
-    let interval = 1f32 / bins as f32;
+fn get_bin(value: f64, bins: usize) -> usize {
+    let interval = 1f64 / bins as f64;
     let mut bin = bins - 1;
-    let mut threshold = 1f32 - interval;
+    let mut threshold = 1f64 - interval;
     while bin > 0 {
         if value > threshold {
             return bin;
@@ -86,7 +86,7 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
 
     let ehs_table = EHS::new();
 
-    let samples_f = samples as f32;
+    let samples_f = samples as f64;
 
     let card_dist: Uniform<u8> = Uniform::from(0..52);
 
@@ -98,7 +98,7 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
     let size_per_thread = (round_size / N_THREADS) as usize;
 
     // histograms to return
-    let mut dataset = vec![vec![0f32; bins]; round_size];
+    let mut dataset = vec![vec![0f64; bins]; round_size];
 
     println!("Generating {} histograms for round {}", round_size, round);
 
@@ -113,8 +113,8 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
                 for j in 0..slice.len() {
 
                     if (i == 0) && (j & 0xff == 0) {
-                        print!("{:.3}% \r", (100 * j) as f32
-                            / size_per_thread as f32);
+                        print!("{:.3}% \r", (100 * j) as f64
+                            / size_per_thread as f64);
                         io::stdout().flush().unwrap();
                     }
 
@@ -141,9 +141,9 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
                             }
                         }
                         // get ehs and add to histogram
-                        let ehs = ehs_table.get_ehs(cards.as_slice()).unwrap() as f32;
+                        let ehs = ehs_table.get_ehs(cards.as_slice()).unwrap() as f64;
 
-                        slice[j][get_bin(ehs, bins)] += 1f32;
+                        slice[j][get_bin(ehs, bins)] += 1f64;
                     }
                     // normalize histogram
                     for k in 0..bins {
@@ -164,22 +164,23 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 
     let mut thread_rng = thread_rng();
     let n_samples = 10000usize;
-    let n_bins = 100usize;
-    let n_restarts: usize = 500;
+    let n_bins = 50usize;
     let ehs_table = EHS::new();
 
-    let mut opp_features = generate_histograms(n_samples, 0, n_bins);
+    let opp_features = generate_histograms(n_samples, 0, n_bins);
     let mut cards: Vec<u8> = vec![0; 2];
-    let mut opp_ranges: Vec<(String, f32)> =
-        vec![("".to_string(), 0f32); n_opp_clusters];
+    let mut opp_ranges: Vec<(String, f64)> =
+        vec![("".to_string(), 0f64); n_opp_clusters];
 
-    let mut estimator = kmeans::Kmeans::init_random(
-        n_restarts, n_opp_clusters,
-        &mut thread_rng, &emd::emd_1d, &opp_features);
+    let mut estimator = kmeans::Kmeans::init_pp(
+        n_opp_clusters, &mut thread_rng,
+        &emd::emd_1d, &opp_features);
 
     println!("Running Kmeans");
 
-    let opp_clusters = estimator.fit(&mut opp_features, &emd::emd_1d, 0.001);
+
+    let (opp_clusters, _) = estimator.fit_regular(&opp_features, &emd::emd_1d);
+    // best inertia is 225
 
     // transform clusters into range string representation
     for i in 0..169 {
@@ -204,7 +205,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
                 opp_ranges[i].0.to_string(),
                 "random".to_string()
         ].to_vec());
-        opp_ranges[i].1 = calc_equity(&ranges, 0, 1, 10000)[0] as f32;
+        opp_ranges[i].1 = calc_equity(&ranges, 0, 1, 10000)[0] as f64;
     }
 
     // sort by all in equity
@@ -243,7 +244,7 @@ fn gen_ochs(round: u8, n_clusters: usize) {
 
     println!("Generating {} histograms for round {}", round_size, round);
 
-    let mut features = vec![vec![0f32; n_opp_clusters]; round_size as usize];
+    let mut features = vec![vec![0f64; n_opp_clusters]; round_size as usize];
     let acc = AtomicCell::new(0usize);
     features.par_iter_mut().enumerate().for_each(|(i, hist)| {
 
@@ -258,7 +259,7 @@ fn gen_ochs(round: u8, n_clusters: usize) {
             .get_hand(if round == 0 { 0 } else { 1 }, i as u64, cards.as_mut_slice());
         let hand_str = HoleCards(cards[0], cards[1]).to_string();
 
-        let mut norm_sum = 0f32;
+        let mut norm_sum = 0f64;
         for i in 0..n_opp_clusters {
             let hand_ranges = HandRange::from_strings([
                 hand_str.to_owned(),
@@ -268,7 +269,7 @@ fn gen_ochs(round: u8, n_clusters: usize) {
             for i in 2..total_cards {
                 board_mask |= 1u64 << cards[i];
             }
-            let e = calc_equity(&hand_ranges, board_mask, 1, 1000)[0] as f32;
+            let e = calc_equity(&hand_ranges, board_mask, 1, 1000)[0] as f64;
             hist[i] = e;
             norm_sum += e;
         }
@@ -294,7 +295,7 @@ fn gen_ochs(round: u8, n_clusters: usize) {
         &mut rng, &kmeans::l2_dist, &train_data);
 
     // train kmeans
-    estimator.fit(&train_data, &kmeans::l2_dist, 0.01);
+    estimator.fit_regular(&train_data, &kmeans::l2_dist);
 
     estimator.predict(&features, &mut clusters, &kmeans::l2_dist);
 
@@ -336,35 +337,24 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
     // let n_samples = 2000usize;
     // let n_bins = 30usize;
     // let n_clusters = 5000usize;
-    let n_restarts: usize = 100;
+    let n_restarts: usize = 50;
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
     let features = generate_histograms(n_samples, round.into(), n_bins);
-
-    // use 25% of the data for training
-    let train_data: Vec<Histogram> = features
-        .choose_multiple(&mut rng, round_size as usize / 4)
-        .cloned()
-        .collect();
-
-    println!("Train data | samples: {}, bin count: {}", train_data.len(), train_data[0].len());
 
     let mut clusters = vec![0usize; round_size as usize];
 
     let mut estimator = kmeans::Kmeans::init_random(
         n_restarts, n_clusters,
-        &mut rng, &emd::emd_1d, &train_data);
+        &mut rng, &emd::emd_1d, &features);
 
-    estimator.fit(&train_data, &emd::emd_1d, 0.01);
+    // use mini batches
+    // let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
+    estimator.fit_minibatch(&mut rng, &features, 100, 500_000, &emd::emd_1d);
 
     estimator.predict(&features, &mut clusters, &emd::emd_1d);
 
-    println!("Clusters 0..5: {} {} {} {} {}",
-             clusters[0], clusters[1],
-             clusters[2], clusters[3],
-             clusters[4]);
-
-    let mut file = OpenOptions::new().write(true).create_new(true).open(format!("round_{}_emd.dat", round)).unwrap();
+    let mut file = OpenOptions::new().write(true).create_new(true).open(format!("means_{}_round_{}_emd.dat", n_clusters, round)).unwrap();
     for i in 0..round_size {
         file.pack(clusters[i as usize] as u32).unwrap();
     }
@@ -373,9 +363,9 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
 fn main() {
     // round, n means, n samples, 40 bins
     gen_emd(1, 5000, 5000, 40); // flop
-    gen_emd(2, 5000, 2500, 30); // turn
+    // gen_emd(2, 5000, 2500, 30); // turn
     // round, n means
-    gen_ochs(3, 5000); // river
+    // gen_ochs(3, 5000); // river
 }
 
 #[cfg(test)]

@@ -11,10 +11,12 @@ use std::pin::Pin;
  */
 pub type NodeId = usize;
 
+#[derive(Debug)]
 pub struct Tree<T> {
     nodes: Vec<Node<T>>
 }
 
+#[derive(Debug)]
 pub struct Node<T> {
     pub children: Vec<NodeId>,
     parent: Option<NodeId>,

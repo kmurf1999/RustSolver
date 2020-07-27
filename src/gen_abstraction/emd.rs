@@ -52,9 +52,16 @@ fn get_bins_1d(b: isize, bins: &mut Vec<isize>, u: isize) {
 /**
  * Computes a close linear approximation of the EMD between two one-dimensional histograms
  */
-pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
+pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
+    // normalize p and q
     let mut p = p.clone();
     let mut q = q.clone();
+    let p_sum = p.iter().sum::<f64>();
+    let q_sum = q.iter().sum::<f64>();
+    for i in 0..p.len() {
+        p[i] /= p_sum;
+        q[i] /= q_sum;
+    }
 
     // main computation
     let mut cost = 0.0;
@@ -78,7 +85,7 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
     } else if factor > 4.0 {
         factor = 4.0;
     }
-    let u: isize = (q.len() as f32 / factor).round() as isize;
+    let u: isize = (q.len() as f64 / factor).round() as isize;
 
     let mut b: Vec<isize> = Vec::new();
     get_bins_1d(0, &mut b, u);
@@ -92,7 +99,7 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
                 if k < q.len() && q[k] != 0.0 {
                     let mass = min!(p[j], q[k]);
                     w += mass;
-                    cost += mass * (j as f32 - k as f32).abs();
+                    cost += mass * (j as f64 - k as f64).abs();
                     p[j] -= mass;
                     q[k] -= mass;
                 }
@@ -100,7 +107,7 @@ pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
         }
     }
 
-    return cost + (1.0 - w) * u as f32;
+    return cost + (1.0 - w) * u as f64;
 }
 
 #[cfg(test)]
@@ -108,29 +115,23 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    const ERROR: f32 = 0.01;
+    const ERROR: f64 = 0.01;
 
     #[bench]
-    fn test_emd_ak_aq(b: &mut Bencher) {
-        // histogram with 30 bins
+    fn test_same(b: &mut Bencher) {
         let hist_a = vec![
-            0.0,0.0,0.0,0.0,0.0025,0.014,0.003,0.018,
-            0.0115,0.0215,0.0755,0.0435,0.0135,0.0615,
-            0.0855,0.075,0.0125,0.0185,0.0215,0.016,
-            0.0085,0.0195,0.0175,0.0235,0.0545,0.0845,
-            0.102,0.044,0.035,0.1175
+            0.007493939393939393,
+            0.019696969696969702,
+            0.04244242424242425,
+            0.04021212121212122,
+            0.0871090909090909,
+            0.05862121212121213,
+            0.040224242424242426,
+            0.0962121212121212
         ];
-        let hist_b = vec![
-            0.0,0.0,0.0,0.0,0.001,0.018,0.0035,0.0085,
-            0.029,0.0125,0.094,0.0375,0.01,0.057,0.102,
-            0.072,0.013,0.0105,0.0185,0.016,0.0115,0.01,
-            0.009,0.0085,0.0535,0.069,0.1315,0.05,0.036,0.118
-        ];
-        let actual_value = 0.2835;
         b.iter(|| {
-            let emd = emd_1d(&hist_a, &hist_b);
-            assert!(emd < (actual_value + ERROR));
-            assert!(emd > (actual_value - ERROR));
+            let emd = emd_1d(&hist_a, &hist_a);
+            assert_eq!(emd, 0.0);
         });
     }
 
