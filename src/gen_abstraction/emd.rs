@@ -52,12 +52,12 @@ fn get_bins_1d(b: isize, bins: &mut Vec<isize>, u: isize) {
 /**
  * Computes a close linear approximation of the EMD between two one-dimensional histograms
  */
-pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
+pub fn emd_1d(p: &Vec<f32>, q: &Vec<f32>) -> f32 {
     // normalize p and q
     let mut p = p.clone();
     let mut q = q.clone();
-    let p_sum = p.iter().sum::<f64>();
-    let q_sum = q.iter().sum::<f64>();
+    let p_sum = p.iter().sum::<f32>();
+    let q_sum = q.iter().sum::<f32>();
     for i in 0..p.len() {
         p[i] /= p_sum;
         q[i] /= q_sum;
@@ -85,7 +85,7 @@ pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
     } else if factor > 4.0 {
         factor = 4.0;
     }
-    let u: isize = (q.len() as f64 / factor).round() as isize;
+    let u: isize = (q.len() as f32 / factor).round() as isize;
 
     let mut b: Vec<isize> = Vec::new();
     get_bins_1d(0, &mut b, u);
@@ -99,7 +99,7 @@ pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
                 if k < q.len() && q[k] != 0.0 {
                     let mass = min!(p[j], q[k]);
                     w += mass;
-                    cost += mass * (j as f64 - k as f64).abs();
+                    cost += mass * (j as f32 - k as f32).abs();
                     p[j] -= mass;
                     q[k] -= mass;
                 }
@@ -107,7 +107,7 @@ pub fn emd_1d(p: &Vec<f64>, q: &Vec<f64>) -> f64 {
         }
     }
 
-    return cost + (1.0 - w) * u as f64;
+    return cost + (1.0 - w) * u as f32;
 }
 
 #[cfg(test)]
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    const ERROR: f64 = 0.01;
+    const ERROR: f32 = 0.01;
 
     #[bench]
     fn test_same(b: &mut Bencher) {
