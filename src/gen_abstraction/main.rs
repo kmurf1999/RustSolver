@@ -337,23 +337,23 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
     // let n_samples = 2000usize;
     // let n_bins = 30usize;
     // let n_clusters = 5000usize;
-    let n_restarts: usize = 50;
+    let n_restarts: usize = 25;
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
     let features = generate_histograms(n_samples, round.into(), n_bins);
     let mut clusters = vec![0usize; round_size as usize];
 
-    let mut estimator = kmeans::Kmeans::init_pp(
-        n_clusters, &mut rng,
-        &emd::emd_1d, &features);
+    // let mut estimator = kmeans::Kmeans::init_pp(
+    //     n_clusters, &mut rng,
+    //     &emd::emd_1d, &features);
 
-    // let mut estimator = kmeans::Kmeans::init_random(
-    //     n_restarts, n_clusters,
-    //     &mut rng, &emd::emd_1d, &features);
+    let mut estimator = kmeans::Kmeans::init_random(
+        n_restarts, n_clusters,
+        &mut rng, &emd::emd_1d, &features);
 
     // use mini batches
-    let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
-    // estimator.fit_minibatch(&mut rng, &features, 100, 100_000, &emd::emd_1d);
+    // let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
+    estimator.fit_minibatch(&mut rng, &features, 100, 100_000, &emd::emd_1d);
 
     estimator.predict(&features, &mut clusters, &emd::emd_1d);
 

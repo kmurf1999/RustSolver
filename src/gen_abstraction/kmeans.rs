@@ -256,15 +256,15 @@ impl Kmeans {
                 .par_iter_mut()
                 .enumerate()
                 .map(|(j, cpm)| {
-                    let lr = 1.0 / cluster_elem_counter[j];
+                    // let lr = 1.0 / cluster_elem_counter[j];
                     for k in 0..n_bins {
                         if cpm[k] > 0.0 {
                             cpm[k] /= cluster_elem_counter[j];
                         }
                     }
-                    for k in 0..n_bins {
-                        cpm[k] = ((1.0 - lr) * self.centers[j][k]) + (lr * cpm[k]);
-                    }
+                    // for k in 0..n_bins {
+                    //     cpm[k] = ((1.0 - lr) * self.centers[j][k]) + (lr * cpm[k]);
+                    // }
                     cpm.to_owned()
             }).collect();
 
