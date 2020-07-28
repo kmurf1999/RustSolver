@@ -40,6 +40,10 @@ impl Kmeans {
         dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync),
         dataset: &Vec<Histogram>) -> Self {
 
+        let start = Instant::now();
+
+        println!("Initializing kmeans++ with {} centers", n_centers);
+
         let n_data = dataset.len();
         // push initial center randomly
         let mut centers: Vec<&Histogram> = Vec::with_capacity(n_centers);
@@ -47,10 +51,16 @@ impl Kmeans {
 
         let mut min_dists= vec![f64::MAX; n_data];
         for i in 1..n_centers {
+
+            print!("Center: {}/{}\r", i, n_centers);
+            io::stdout().flush().unwrap();
+
             update_min_dists(dist_func, &mut min_dists, dataset, &centers[i-1]);
             let dist = WeightedIndex::new(&min_dists).unwrap();
             centers.push(&dataset[dist.sample(rng)]);
         }
+
+        println!("Done.  Took {}ms", start.elapsed().as_millis());
 
         Kmeans {
             centers: centers.iter().map(|x| (*x).clone()).collect()
@@ -143,7 +153,7 @@ impl Kmeans {
     pub fn predict(&self,
             dataset: &Vec<Histogram>,
             clusters: &mut Vec<usize>,
-            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync)) -> (usize, f64) {
+            dist_func: &'static (dyn Fn(&Histogram, &Histogram) -> f64 + Sync)) -> f64 {
 
         if clusters.len() != dataset.len() {
             panic!("Cluster and dataset does not match");
@@ -153,7 +163,6 @@ impl Kmeans {
         let n_centers = self.centers.len();
 
         // number of clusters that have changed
-        let changed = AtomicCell::new(0usize);
         let inertia = AtomicCell::new(0f64);
 
         clusters.par_iter_mut().enumerate().for_each(|(i, cluster)| {
@@ -176,15 +185,11 @@ impl Kmeans {
 
             inertia.store(inertia.load() + variance[min_cluster]);
 
-            if min_cluster != curr_cluster {
-                changed.fetch_add(1);
-            }
-
             *cluster = min_cluster;
 
         });
 
-        return (changed.load(), inertia.load());
+        return inertia.load();
     }
 
     /// train kmeans using random small batches of data
@@ -201,26 +206,41 @@ impl Kmeans {
         let n_bins = dataset[0].len();
 
         let mut s = vec![f64::MAX; k];
+        let mut inertia = vec![0f64; batch_size];
+        let mut inertia_sum = 0f64;
 
         for iteration in 0..max_iteration {
+
+            let iter_start = Instant::now();
+
+            print!("Getting train data\r");
+            io::stdout().flush().unwrap();
 
             let train_data: Vec<Histogram> = dataset
                 .choose_multiple(rng, batch_size)
                 .cloned()
                 .collect();
 
-            let mut inertia = vec![0f64; batch_size];
             let mut bounds = vec![(0f64, f64::MAX); batch_size];
             let mut clusters = vec![0usize; batch_size];
 
+            print!("Calculating s\n");
+            io::stdout().flush().unwrap();
+
             // do one iteration of kmeans
             self.init_s(&mut s, dist_func);
+
+            print!("Assigning Clusters s\n");
+            io::stdout().flush().unwrap();
 
             self.reassign_clusters(
                 &train_data, &s,
                 &mut clusters, &mut bounds,
                 &mut inertia, dist_func
             );
+
+            print!("Calculating new means\n");
+            io::stdout().flush().unwrap();
 
             let mut cluster_elem_counter: Vec<f64> = vec![0.0; k];
             let mut cluster_prob_mass: Vec<Vec<f64>> = vec![vec![0.0; n_bins]; k];
@@ -231,6 +251,7 @@ impl Kmeans {
                         dataset[j][k];
                 }
             }
+
             let new_centers: Vec<Vec<f64>> = cluster_prob_mass
                 .par_iter_mut()
                 .enumerate()
@@ -246,42 +267,49 @@ impl Kmeans {
                     }
                     cpm.to_owned()
             }).collect();
+
+            // print!("Updating bounds\n");
+            // io::stdout().flush().unwrap();
+
             // get movement of each center
-            let center_movement: Vec<f64> = (0..k).into_par_iter().map(|j| {
-                dist_func(&new_centers[j], &self.centers[j])
-            }).collect();
+            // let center_movement: Vec<f64> = (0..k).into_par_iter().map(|j| {
+            //     dist_func(&new_centers[j], &self.centers[j])
+            // }).collect();
 
-            let mut longest_idx = 0;
-            let mut longest = center_movement[0];
-            let mut second_longest = center_movement[1];
-            if longest < second_longest {
-                longest = center_movement[1];
-                second_longest = center_movement[0];
-                longest_idx = 1;
-            }
-            for j in 2..k {
-                if longest < center_movement[j] {
-                    second_longest = longest;
-                    longest = center_movement[j];
-                    longest_idx = j;
-                } else if second_longest < center_movement[j] {
-                    second_longest = center_movement[j];
-                }
-            }
+            // let mut longest_idx = 0;
+            // let mut longest = center_movement[0];
+            // let mut second_longest = center_movement[1];
+            // if longest < second_longest {
+            //     longest = center_movement[1];
+            //     second_longest = center_movement[0];
+            //     longest_idx = 1;
+            // }
+            // for j in 2..k {
+            //     if longest < center_movement[j] {
+            //         second_longest = longest;
+            //         longest = center_movement[j];
+            //         longest_idx = j;
+            //     } else if second_longest < center_movement[j] {
+            //         second_longest = center_movement[j];
+            //     }
+            // }
 
-            bounds.par_iter_mut().enumerate().for_each(|(i, b)| {
-                b.1 += center_movement[clusters[i]];
-                b.0 -= if clusters[i] == longest_idx {
-                    second_longest
-                } else {
-                    longest
-                };
-            });
+            // bounds.par_iter_mut().enumerate().for_each(|(i, b)| {
+            //     b.1 += center_movement[clusters[i]];
+            //     b.0 -= if clusters[i] == longest_idx {
+            //         second_longest
+            //     } else {
+            //         longest
+            //     };
+            // });
 
-            print!("iteration: {}, inertia: {:.4}\r",
+            let next_inertia_sum = inertia.par_iter().sum::<f64>();
+            print!("iteration: {}, inertia: {:.4}, ({:.4})\r",
                    iteration,
-                   inertia.iter().sum::<f64>());
+                   next_inertia_sum,
+                   next_inertia_sum - inertia_sum);
             io::stdout().flush().unwrap();
+            inertia_sum = next_inertia_sum;
 
             self.centers = new_centers;
         }

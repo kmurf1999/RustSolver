@@ -40,7 +40,7 @@ use kmeans::Kmeans;
 
 use ehs::EHS;
 
-const N_THREADS: usize = 8;
+const N_THREADS: usize = 16;
 
 pub type Histogram = Vec<f64>;
 
@@ -341,20 +341,28 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
     let features = generate_histograms(n_samples, round.into(), n_bins);
-
     let mut clusters = vec![0usize; round_size as usize];
 
-    let mut estimator = kmeans::Kmeans::init_random(
-        n_restarts, n_clusters,
-        &mut rng, &emd::emd_1d, &features);
+    let mut estimator = kmeans::Kmeans::init_pp(
+        n_clusters, &mut rng,
+        &emd::emd_1d, &features);
+
+    // let mut estimator = kmeans::Kmeans::init_random(
+    //     n_restarts, n_clusters,
+    //     &mut rng, &emd::emd_1d, &features);
 
     // use mini batches
-    // let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
-    estimator.fit_minibatch(&mut rng, &features, 100, 500_000, &emd::emd_1d);
+    let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
+    // estimator.fit_minibatch(&mut rng, &features, 100, 100_000, &emd::emd_1d);
 
     estimator.predict(&features, &mut clusters, &emd::emd_1d);
 
-    let mut file = OpenOptions::new().write(true).create_new(true).open(format!("means_{}_round_{}_emd.dat", n_clusters, round)).unwrap();
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(format!("means_{}_round_{}_emd.dat", n_clusters, round))
+        .unwrap();
+
     for i in 0..round_size {
         file.pack(clusters[i as usize] as u32).unwrap();
     }
@@ -362,7 +370,7 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
 
 fn main() {
     // round, n means, n samples, 40 bins
-    gen_emd(1, 5000, 5000, 40); // flop
+    gen_emd(1, 5000, 2500, 40); // flop
     // gen_emd(2, 5000, 2500, 30); // turn
     // round, n means
     // gen_ochs(3, 5000); // river
