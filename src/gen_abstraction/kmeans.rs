@@ -340,7 +340,7 @@ impl Kmeans {
         dataset: &Vec<Vec<f64>>,
     ) {
         println!("Starting growbatch kmeans");
-        let threshold = 1.0;
+        let threshold = 0.1;
         let stop_threshold = 10000000.0;
         let start = Instant::now();
         let k = self.centers.len();
@@ -462,22 +462,23 @@ impl Kmeans {
 
             self.centers = new_centers;
             last_batch_idx = current_batch_idx;
-            if min_change > threshold {
-                current_batch_idx = min!(n_data, current_batch_idx * 2);
-            }
-            let inertia = bounds.iter().map(|b| b.1).sum::<f64>() / n_data as f64;
+            // if min_change > threshold {
+            current_batch_idx = min!(n_data, current_batch_idx * 2);
+            // }
+            let inertia = bounds.iter().map(|b| b.1).sum::<f64>() / current_batch_idx as f64;
             if min_change > stop_threshold {
                 println!(
-                    "Done.  took {}ms, p: {:.3}, inertia: {:4}",
+                    "Done.  took {}ms, batch size: {}, p: {:.3}, inertia: {:4}",
                     start.elapsed().as_millis(),
+                    current_batch_idx,
                     min_change,
                     inertia
                 );
                 break;
             } else {
                 print!(
-                    "iteration: {}, p: {:.3}, inertia: {:.4}\r",
-                    t, min_change, inertia
+                    "iteration: {}, batch_size: {}, p: {:.3}, inertia: {:.4}\r",
+                    t, current_batch_idx, min_change, inertia
                 );
                 io::stdout().flush().unwrap();
             }

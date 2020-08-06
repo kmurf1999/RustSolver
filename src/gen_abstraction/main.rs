@@ -171,20 +171,20 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
     // let mut estimator =
     // kmeans::Kmeans::init_pp(n_opp_clusters, &mut thread_rng, &emd::emd_1d, &opp_features);
 
-    let mut estimator = kmeans::Kmeans::init_random(
-        10,
-        n_opp_clusters,
-        &mut thread_rng,
-        &emd::emd_1d,
-        &opp_features,
-    );
-    // let mut estimator =
-    // kmeans::Kmeans::init_pp(n_opp_clusters, &mut thread_rng, &emd::emd_1d, &opp_features);
+    // let mut estimator = kmeans::Kmeans::init_random(
+    //     1,
+    //     n_opp_clusters,
+    //     &mut thread_rng,
+    //     &emd::emd_1d,
+    //     &opp_features,
+    // );
+    let mut estimator =
+        kmeans::Kmeans::init_pp(n_opp_clusters, &mut thread_rng, &emd::emd_1d, &opp_features);
     // println!("Running Kmeans");
 
     // estimator.growbatch_rho(&mut thread_rng, &emd::emd_1d, 10, &opp_features);
-    // estimator.fit_regular(&opp_features, &emd::emd_1d);
-    estimator.fit_growbatch(&mut thread_rng, &emd::emd_1d, 50, &opp_features);
+    estimator.fit_regular(&opp_features, &emd::emd_1d);
+    // estimator.fit_growbatch(&mut thread_rng, &emd::emd_1d, 50, &opp_features);
 
     let mut opp_clusters = vec![0usize; opp_features.len()];
     let inertia = estimator.predict(&opp_features, &mut opp_clusters, &emd::emd_1d);
@@ -194,7 +194,10 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
     for i in 0..169 {
         ehs_table.indexers[0].get_hand(0, i as u64, cards.as_mut_slice());
         let hand_str = HoleCards(cards[0], cards[1]).to_string();
-        let char_vec: Vec<char> = hand_str.chars().collect();
+        let char_vec: Vec<char> = hand_str
+            .chars()
+            .map(|c| c.to_lowercase().next().unwrap())
+            .collect();
         let (c1, c2) = if char_to_rank(char_vec[0]) > char_to_rank(char_vec[2]) {
             (char_vec[0], char_vec[2])
         } else {
@@ -334,66 +337,60 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 /// * `n_samples` number of samples per histogram
 /// * `n_bins` number of bins in histogram
 ///
-// fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
+fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
+    if round < 1 || round > 3 {
+        panic!("invalid round");
+    }
 
-//     if round < 1 || round > 3 {
-//         panic!("invalid round");
-//     }
+    let mut rng = thread_rng();
 
-//     let mut rng = thread_rng();
+    let hand_indexer = match round {
+        0 => hand_indexer_s::init(1, vec![2]),
+        1 => hand_indexer_s::init(2, vec![2, 3]),
+        2 => hand_indexer_s::init(2, vec![2, 4]),
+        3 => hand_indexer_s::init(2, vec![2, 5]),
+        _ => panic!("Invalid round!"),
+    };
 
-//     let hand_indexer = match round {
-//         0 => hand_indexer_s::init(1, vec![2]),
-//         1 => hand_indexer_s::init(2, vec![2, 3]),
-//         2 => hand_indexer_s::init(2, vec![2, 4]),
-//         3 => hand_indexer_s::init(2, vec![2, 5]),
-//         _ => panic!("Invalid round!")
-//     };
+    // let n_samples = 2000usize;
+    // let n_bins = 30usize;
+    // let n_clusters = 5000usize;
+    let n_restarts: usize = 1;
+    let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
-//     // let n_samples = 2000usize;
-//     // let n_bins = 30usize;
-//     // let n_clusters = 5000usize;
-//     let n_restarts: usize = 25;
-//     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
+    let features = generate_histograms(n_samples, round.into(), n_bins);
+    let mut clusters = vec![0usize; round_size as usize];
+    // let mut estimator = kmeans::Kmeans::init_pp(n_clusters, &mut rng, &emd::emd_1d, &features);
+    let mut estimator =
+        kmeans::Kmeans::init_random(n_restarts, n_clusters, &mut rng, &emd::emd_1d, &features);
 
-//     let features = generate_histograms(n_samples, round.into(), n_bins);
-//     let mut clusters = vec![0usize; round_size as usize];
+    // use mini batches
+    estimator.fit_growbatch(&mut rng, &emd::emd_1d, 10000, &features);
 
-//     // let mut estimator = kmeans::Kmeans::init_pp(
-//     //     n_clusters, &mut rng,
-//     //     &emd::emd_1d, &features);
+    estimator.predict(&features, &mut clusters, &emd::emd_1d);
 
-//     let mut estimator = kmeans::Kmeans::init_random(
-//         n_restarts, n_clusters,
-//         &mut rng, &emd::emd_1d, &features);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(format!("means_{}_round_{}_emd.dat", n_clusters, round))
+        .unwrap();
 
-//     // use mini batches
-//     // let (clusters, inertia) = estimator.fit_regular(&features, &emd::emd_1d);
-//     estimator.fit_minibatch(&mut rng, &features, 100, 100_000, &emd::emd_1d);
-
-//     estimator.predict(&features, &mut clusters, &emd::emd_1d);
-
-//     let mut file = OpenOptions::new()
-//         .write(true)
-//         .create_new(true)
-//         .open(format!("means_{}_round_{}_emd.dat", n_clusters, round))
-//         .unwrap();
-
-//     for i in 0..round_size {
-//         file.pack(clusters[i as usize] as u32).unwrap();
-//     }
-// }
+    for i in 0..round_size {
+        file.pack(clusters[i as usize] as u32).unwrap();
+    }
+}
 
 fn main() {
     // round, n means, n samples, 40 bins
-    // gen_emd(1, 5000, 2500, 40); // flop
+    gen_emd(1, 2500, 500, 30);
+    // flop
     // gen_emd(2, 5000, 2500, 30); // turn
     // round, n means
     // gen_ochs(3, 5000); // river
-    let ranges = generate_opponent_clusters(8);
-    for r in ranges {
-        println!("{}", r);
-    }
+    // let ranges = generate_opponent_clusters(8);
+    // for r in ranges {
+    // println!("{}", r);
+    // }
 }
 
 #[cfg(test)]
