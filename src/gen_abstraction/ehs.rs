@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::SeekFrom;
 use std::io::BufReader;
 use combine::Parser;
-use combine::parser::byte::num::le_f64;
+use combine::parser::byte::num::le_f32;
 use std::io::{Error, ErrorKind};
 
 use rust_poker::hand_indexer_s;
@@ -48,7 +48,7 @@ impl EHS {
      * Get offset index of cards for lookup table
      * first two cards are hole cards
      */
-    pub fn get_ehs(&self, cards: &[u8]) -> std::io::Result<f64> {
+    pub fn get_ehs(&self, cards: &[u8]) -> std::io::Result<f32> {
         let mut reader = BufReader::with_capacity(8, &self.file);
         //  let mut file = File::open("ehs.dat").unwrap();
         let i: usize = match cards.len() {
@@ -62,7 +62,7 @@ impl EHS {
         let index = self.indexers[i].get_index(cards);
         reader.seek(SeekFrom::Start((index + self.offsets[i]) * 8))?;
         let buffer = reader.fill_buf()?;
-        let result = le_f64().parse(buffer);
+        let result = le_f32().parse(buffer);
         match result {
             Ok((val, _)) => {
                 return Ok(val);
@@ -105,7 +105,7 @@ mod tests {
     fn test_get_ehs_aa() {
         let ehs_table = EHS::new();
         let mut cards: Vec<u8>;
-        let mut ehs: f64;
+        let mut ehs: f32;
         cards = vec![48u8, 49];
         ehs = ehs_table.get_ehs(cards.as_slice()).unwrap();
         assert_eq!(ehs, 0.8520068359375);

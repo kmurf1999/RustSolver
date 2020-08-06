@@ -40,7 +40,7 @@ use ehs::EHS;
 
 const N_THREADS: usize = 16;
 
-pub type Histogram = Vec<f64>;
+pub type Histogram = Vec<f32>;
 
 /**
  * Create histograms for each combo
@@ -55,10 +55,10 @@ pub type Histogram = Vec<f64>;
  * @param bins: number of bins in histogram
  * @param value: the probability
  */
-fn get_bin(value: f64, bins: usize) -> usize {
-    let interval = 1f64 / bins as f64;
+fn get_bin(value: f32, bins: usize) -> usize {
+    let interval = 1f32 / bins as f32;
     let mut bin = bins - 1;
-    let mut threshold = 1f64 - interval;
+    let mut threshold = 1f32 - interval;
     while bin > 0 {
         if value > threshold {
             return bin;
@@ -83,7 +83,7 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
 
     let ehs_table = EHS::new();
 
-    let samples_f = samples as f64;
+    let samples_f = samples as f32;
 
     let card_dist: Uniform<u8> = Uniform::from(0..52);
 
@@ -94,7 +94,7 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
     let size_per_thread = (round_size / N_THREADS) as usize;
 
     // histograms to return
-    let mut dataset = vec![vec![0f64; bins]; round_size];
+    let mut dataset = vec![vec![0f32; bins]; round_size];
 
     println!("Generating {} histograms for round {}", round_size, round);
 
@@ -108,7 +108,7 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
             scope.spawn(move |_| {
                 for j in 0..slice.len() {
                     if (i == 0) && (j & 0xff == 0) {
-                        print!("{:.3}% \r", (100 * j) as f64 / size_per_thread as f64);
+                        print!("{:.3}% \r", (100 * j) as f32 / size_per_thread as f32);
                         io::stdout().flush().unwrap();
                     }
 
@@ -138,9 +138,9 @@ fn generate_histograms(samples: usize, round: usize, bins: usize) -> Vec<Histogr
                             }
                         }
                         // get ehs and add to histogram
-                        let ehs = ehs_table.get_ehs(cards.as_slice()).unwrap() as f64;
+                        let ehs = ehs_table.get_ehs(cards.as_slice()).unwrap() as f32;
 
-                        slice[j][get_bin(ehs, bins)] += 1f64;
+                        slice[j][get_bin(ehs, bins)] += 1f32;
                     }
                     // normalize histogram
                     for k in 0..bins {
@@ -166,7 +166,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 
     let opp_features = generate_histograms(n_samples, 0, n_bins);
     let mut cards: Vec<u8> = vec![0; 2];
-    let mut opp_ranges: Vec<(String, f64)> = vec![("".to_string(), 0f64); n_opp_clusters];
+    let mut opp_ranges: Vec<(String, f32)> = vec![("".to_string(), 0f32); n_opp_clusters];
 
     // let mut estimator =
     // kmeans::Kmeans::init_pp(n_opp_clusters, &mut thread_rng, &emd::emd_1d, &opp_features);
@@ -188,7 +188,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 
     let mut opp_clusters = vec![0usize; opp_features.len()];
     let inertia = estimator.predict(&opp_features, &mut opp_clusters, &emd::emd_1d);
-    println!("{}", inertia / n_opp_clusters as f64);
+    println!("{}", inertia / n_opp_clusters as f32);
 
     // transform clusters into range string representation
     for i in 0..169 {
@@ -225,7 +225,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
         // println!("{}", opp_ranges[i].0);
         let ranges =
             HandRange::from_strings([opp_ranges[i].0.to_string(), "random".to_string()].to_vec());
-        opp_ranges[i].1 = calc_equity(&ranges, 0, 1, 10000)[0] as f64;
+        opp_ranges[i].1 = calc_equity(&ranges, 0, 1, 10000)[0] as f32;
     }
 
     // sort by all in equity
@@ -263,7 +263,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 
 //     println!("Generating {} histograms for round {}", round_size, round);
 
-//     let mut features = vec![vec![0f64; n_opp_clusters]; round_size as usize];
+//     let mut features = vec![vec![0f32; n_opp_clusters]; round_size as usize];
 //     let acc = AtomicCell::new(0usize);
 //     features.par_iter_mut().enumerate().for_each(|(i, hist)| {
 
@@ -278,7 +278,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 //             .get_hand(if round == 0 { 0 } else { 1 }, i as u64, cards.as_mut_slice());
 //         let hand_str = HoleCards(cards[0], cards[1]).to_string();
 
-//         let mut norm_sum = 0f64;
+//         let mut norm_sum = 0f32;
 //         for i in 0..n_opp_clusters {
 //             let hand_ranges = HandRange::from_strings([
 //                 hand_str.to_owned(),
@@ -288,7 +288,7 @@ fn generate_opponent_clusters(n_opp_clusters: usize) -> Vec<String> {
 //             for i in 2..total_cards {
 //                 board_mask |= 1u64 << cards[i];
 //             }
-//             let e = calc_equity(&hand_ranges, board_mask, 1, 1000)[0] as f64;
+//             let e = calc_equity(&hand_ranges, board_mask, 1, 1000)[0] as f32;
 //             hist[i] = e;
 //             norm_sum += e;
 //         }
@@ -355,7 +355,7 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
     // let n_samples = 2000usize;
     // let n_bins = 30usize;
     // let n_clusters = 5000usize;
-    let n_restarts: usize = 1;
+    let n_restarts: usize = 10;
     let round_size = hand_indexer.size(if round == 0 { 0 } else { 1 });
 
     let features = generate_histograms(n_samples, round.into(), n_bins);
@@ -382,7 +382,7 @@ fn gen_emd(round: u8, n_clusters: usize, n_samples: usize, n_bins: usize) {
 
 fn main() {
     // round, n means, n samples, 40 bins
-    gen_emd(1, 2500, 500, 30);
+    gen_emd(1, 500, 250, 20);
     // flop
     // gen_emd(2, 5000, 2500, 30); // turn
     // round, n means
